@@ -164,6 +164,17 @@ Flyway migration `storage/src/main/resources/db/migration/V1__init.sql`.
 SQLite types: `TEXT` for UUIDs and ISO-8601 timestamps, `INTEGER` for
 money in minor units (cents).
 
+SQLite is a "community" (non-core) database for Flyway, which as of
+Flyway 13.x needs its own module — `flyway-database-nc-sqlite` —
+alongside `flyway-core` on the classpath; `flyway-core` alone does not
+migrate SQLite. Pinned versions used in `storage/build.gradle.kts`
+(checked against Maven Central at implementation time): Exposed
+`1.5.0` (`exposed-core`, `exposed-jdbc`), Flyway `13.4.0`
+(`flyway-core`, `flyway-database-nc-sqlite`), `org.xerial:sqlite-jdbc`
+`3.53.4.0`, `kotlinx-coroutines-core` `1.11.0` (also pulled in
+transitively by `exposed-core`, but declared explicitly since `storage`
+calls `Dispatchers`/`withContext` directly).
+
 ```sql
 CREATE TABLE group_ (
     id TEXT PRIMARY KEY,
