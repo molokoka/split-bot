@@ -1,6 +1,7 @@
 package split.core
 
 import java.math.BigDecimal
+import java.time.Instant
 
 @JvmInline
 value class MemberId(val value: String)
@@ -40,6 +41,7 @@ data class Expense(
     val payerId: MemberId,
     val splitType: SplitType,
     val shares: List<ExpenseShare>,
+    val deletedAt: Instant? = null,
 )
 
 data class Settlement(

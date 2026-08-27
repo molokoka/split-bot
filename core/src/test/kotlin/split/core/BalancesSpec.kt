@@ -3,6 +3,7 @@ package split.core
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import java.math.BigDecimal
+import java.time.Instant
 
 class BalancesSpec : StringSpec({
 
@@ -58,6 +59,49 @@ class BalancesSpec : StringSpec({
             alice to BigDecimal("40.00"),
             bob to BigDecimal("-15.00"),
             carol to BigDecimal("-25.00"),
+        )
+    }
+
+    "excludes soft-deleted expenses from the balance" {
+        val dinner = Expense(
+            id = ExpenseId("e1"),
+            groupId = group,
+            currency = "USD",
+            description = "dinner",
+            amount = BigDecimal("90.00"),
+            payerId = alice,
+            splitType = SplitType.EQUAL,
+            shares = listOf(
+                ExpenseShare(alice, BigDecimal("30.00")),
+                ExpenseShare(bob, BigDecimal("30.00")),
+                ExpenseShare(carol, BigDecimal("30.00")),
+            ),
+        )
+        val deletedCoffee = Expense(
+            id = ExpenseId("e2"),
+            groupId = group,
+            currency = "USD",
+            description = "coffee",
+            amount = BigDecimal("30.00"),
+            payerId = bob,
+            splitType = SplitType.EQUAL,
+            shares = listOf(
+                ExpenseShare(bob, BigDecimal("15.00")),
+                ExpenseShare(carol, BigDecimal("15.00")),
+            ),
+            deletedAt = Instant.parse("2026-08-27T00:00:00Z"),
+        )
+
+        val balances = computeBalances(
+            currency = "USD",
+            expenses = listOf(dinner, deletedCoffee),
+            settlements = emptyList(),
+        )
+
+        balances shouldBe mapOf(
+            alice to BigDecimal("60.00"),
+            bob to BigDecimal("-30.00"),
+            carol to BigDecimal("-30.00"),
         )
     }
 })

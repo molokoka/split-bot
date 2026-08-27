@@ -13,7 +13,7 @@ fun computeBalances(
         balances[memberId] = balances.getOrDefault(memberId, BigDecimal.ZERO) + delta
     }
 
-    expenses.filter { it.currency == currency }.forEach { expense ->
+    expenses.filter { it.currency == currency && it.deletedAt == null }.forEach { expense ->
         add(expense.payerId, expense.amount)
         expense.shares.forEach { share -> add(share.memberId, -share.shareAmount) }
     }
