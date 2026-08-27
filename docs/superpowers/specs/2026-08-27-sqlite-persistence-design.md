@@ -69,12 +69,17 @@ API leaks into `core`).
 
 ## Core prerequisite
 
-The bot design's data model lists `created_at` on `Group` and
-`created_by` / `created_at` / `deleted_at` on `Settlement`, matching the
-audit/soft-delete fields `Expense` already has. The current
-`core/src/main/kotlin/split/core/Entities.kt` only has these fields on
-`Expense`. Before the storage layer is built, `core` needs:
+The bot design's data model lists `created_by` / `created_at` on
+`Expense`, `created_at` on `Group`, and `created_by` / `created_at` /
+`deleted_at` on `Settlement`. Checked against the actual
+`core/src/main/kotlin/split/core/Entities.kt`: **none of these exist
+yet** — `Expense` only has `deletedAt`, and `Group` / `Settlement` have
+neither audit nor soft-delete fields at all. (An earlier draft of this
+spec assumed `Expense` already had `createdBy`/`createdAt`; it doesn't.)
+Before the storage layer is built, `core` needs:
 
+- `Expense.createdBy: MemberId`
+- `Expense.createdAt: Instant`
 - `Group.createdAt: Instant`
 - `Settlement.createdBy: MemberId`
 - `Settlement.createdAt: Instant`
@@ -83,10 +88,11 @@ audit/soft-delete fields `Expense` already has. The current
 `computeBalances` should exclude soft-deleted settlements the same way it
 already excludes soft-deleted expenses (`it.deletedAt == null`), and an
 authorization rule for deleting a settlement (payer or group admin)
-should mirror the existing `canDeleteExpense`. These are small, isolated
-additions to already-tested code — same shape as the existing
-`Expense`/`canDeleteExpense` pattern, done via TDD like the rest of
-`core`.
+should mirror the existing `canDeleteExpense`. `createSettlement` and any
+expense-creation helper need `createdBy`/`createdAt` parameters. These
+are small, isolated additions to already-tested code — same shape as the
+existing `deletedAt`/`canDeleteExpense` pattern, done via TDD like the
+rest of `core`.
 
 Two new small `core` types support the platform-mapping layer:
 
