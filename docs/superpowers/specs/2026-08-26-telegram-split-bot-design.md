@@ -109,8 +109,18 @@ mitigations, both adopted:
    from the group's already-known members (`/members`), so you tap who
    was there. Typed `@mentions` still work as a fast path for people
    already known. If someone genuinely unknown is mentioned, the bot
-   replies that it doesn't recognize them yet and to have them send
-   anything in the chat first, rather than silently failing.
+   replies that it doesn't recognize them yet and names the exact fix:
+   ask them to run `/start` with the bot — rather than silently failing
+   or giving a vague "say something in the chat" instruction.
+3. **Placeholder members** — `/members add <name>` registers a member
+   with no Telegram identity at all (no `PlatformIdentity` row), for a
+   friend who isn't on Telegram or hasn't started the bot yet. This
+   needs no data model change: `Member` never required a
+   `PlatformIdentity` row to begin with, so a placeholder is just a
+   `Member` that one never gets attached. They can be split with like
+   anyone else and appear in `/balances`, but the bot can't message
+   them directly — settling with them is tracked via `/settle` same as
+   anyone, it just isn't backed by a notification to them.
 
 ## Commands
 
@@ -122,7 +132,11 @@ mitigations, both adopted:
 - `/add 90 dinner @alice @bob` — logs a $90 expense you paid, split
   equally among you + mentioned people
 - `/add 90 dinner` (no mentions) — opens an inline participant picker
-  built from known group members
+  built from known group members, with a "+ Add someone new" option
+  that runs `/members add`
+- `/members add <name>` — registers a placeholder member with no
+  Telegram account, for splitting with a friend who isn't on the bot
+  yet (see "Identity resolution")
 - `/add 90 EUR dinner @alice @bob` — explicit currency override for this
   one expense
 - Inline **"Change split"** button on the confirmation — switches to
