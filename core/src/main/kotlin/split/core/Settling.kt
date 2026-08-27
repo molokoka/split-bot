@@ -1,6 +1,7 @@
 package split.core
 
 import java.math.BigDecimal
+import java.time.Instant
 
 fun createSettlement(
     id: SettlementId,
@@ -9,6 +10,8 @@ fun createSettlement(
     from: MemberId,
     to: MemberId,
     amount: BigDecimal,
+    createdBy: MemberId,
+    createdAt: Instant,
 ): Settlement {
     require(amount > BigDecimal.ZERO) { "Settlement amount must be positive, was $amount" }
     require(from != to) { "Cannot settle with yourself" }
@@ -20,6 +23,8 @@ fun createSettlement(
         fromMemberId = from,
         toMemberId = to,
         amount = amount,
+        createdBy = createdBy,
+        createdAt = createdAt,
     )
 }
 
@@ -28,3 +33,9 @@ fun canDeleteExpense(
     requesterId: MemberId,
     requesterIsGroupAdmin: Boolean,
 ): Boolean = requesterId == expense.payerId || requesterIsGroupAdmin
+
+fun canDeleteSettlement(
+    settlement: Settlement,
+    requesterId: MemberId,
+    requesterIsGroupAdmin: Boolean,
+): Boolean = requesterId == settlement.createdBy || requesterIsGroupAdmin

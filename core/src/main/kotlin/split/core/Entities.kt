@@ -23,6 +23,7 @@ data class Member(
 data class Group(
     val id: GroupId,
     val defaultCurrency: String,
+    val createdAt: Instant,
 )
 
 enum class SplitType { EQUAL, EXACT, SHARES }
@@ -40,6 +41,8 @@ data class Expense(
     val amount: BigDecimal,
     val payerId: MemberId,
     val splitType: SplitType,
+    val createdBy: MemberId,
+    val createdAt: Instant,
     val shares: List<ExpenseShare>,
     val deletedAt: Instant? = null,
 )
@@ -51,4 +54,7 @@ data class Settlement(
     val fromMemberId: MemberId,
     val toMemberId: MemberId,
     val amount: BigDecimal,
+    val createdBy: MemberId,
+    val createdAt: Instant,
+    val deletedAt: Instant? = null,
 )

@@ -4,12 +4,14 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import java.math.BigDecimal
+import java.time.Instant
 
 class CreateSettlementSpec : StringSpec({
 
     val group = GroupId("g1")
     val alice = MemberId("alice")
     val bob = MemberId("bob")
+    val createdAt = Instant.parse("2026-08-27T00:00:00Z")
 
     "builds a settlement recording that one member paid another" {
         val settlement = createSettlement(
@@ -19,6 +21,8 @@ class CreateSettlementSpec : StringSpec({
             from = bob,
             to = alice,
             amount = BigDecimal("20.00"),
+            createdBy = bob,
+            createdAt = createdAt,
         )
 
         settlement shouldBe Settlement(
@@ -28,6 +32,8 @@ class CreateSettlementSpec : StringSpec({
             fromMemberId = bob,
             toMemberId = alice,
             amount = BigDecimal("20.00"),
+            createdBy = bob,
+            createdAt = createdAt,
         )
     }
 
@@ -40,6 +46,8 @@ class CreateSettlementSpec : StringSpec({
                 from = bob,
                 to = alice,
                 amount = BigDecimal("0.00"),
+                createdBy = bob,
+                createdAt = createdAt,
             )
         }
     }
@@ -53,6 +61,8 @@ class CreateSettlementSpec : StringSpec({
                 from = alice,
                 to = alice,
                 amount = BigDecimal("20.00"),
+                createdBy = alice,
+                createdAt = createdAt,
             )
         }
     }

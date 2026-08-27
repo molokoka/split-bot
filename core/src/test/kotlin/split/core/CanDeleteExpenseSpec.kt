@@ -3,6 +3,7 @@ package split.core
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import java.math.BigDecimal
+import java.time.Instant
 
 class CanDeleteExpenseSpec : StringSpec({
 
@@ -19,6 +20,8 @@ class CanDeleteExpenseSpec : StringSpec({
         amount = BigDecimal("90.00"),
         payerId = alice,
         splitType = SplitType.EQUAL,
+        createdBy = alice,
+        createdAt = Instant.parse("2026-08-27T00:00:00Z"),
         shares = listOf(ExpenseShare(alice, BigDecimal("90.00"))),
     )
 

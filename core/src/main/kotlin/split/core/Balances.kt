@@ -18,7 +18,7 @@ fun computeBalances(
         expense.shares.forEach { share -> add(share.memberId, -share.shareAmount) }
     }
 
-    settlements.filter { it.currency == currency }.forEach { settlement ->
+    settlements.filter { it.currency == currency && it.deletedAt == null }.forEach { settlement ->
         add(settlement.fromMemberId, settlement.amount)
         add(settlement.toMemberId, -settlement.amount)
     }
