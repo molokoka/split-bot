@@ -62,10 +62,11 @@ recommend for controlling where the blocking work runs. Pin the exact
 `exposed-core`/`exposed-jdbc` versions during implementation and use
 this pattern, not the older API.
 
-This needs `kotlinx-coroutines-core` as a dependency of `storage` (and
-`core`, since the interfaces themselves live there and `suspend` is a
-language keyword, not a coroutines-library type — no other coroutines
-API leaks into `core`).
+This needs `kotlinx-coroutines-core` as a dependency of `storage` only —
+`suspend` is a language keyword backed by `kotlin-stdlib`, not the
+coroutines library, so `core` compiles the `suspend fun` port interfaces
+with no extra dependency (verified: `core` builds clean with zero
+coroutines dependency once the interfaces are added).
 
 ## Core prerequisite
 
