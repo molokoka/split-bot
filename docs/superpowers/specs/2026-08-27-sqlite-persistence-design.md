@@ -38,14 +38,34 @@ Repository interfaces live in `core` as ports:
 Each method is `suspend fun`. JDBC itself is blocking — there's no async
 SQLite driver — but the bot's long-polling loop is coroutine-based, and a
 blocking repository call would stall it (and any concurrent update
-processing) for the duration of every DB write. `storage` implements
-each method with Exposed's `newSuspendedTransaction(Dispatchers.IO) { }`,
-which suspends the caller's coroutine while running the blocking JDBC
-work on an IO-dispatcher thread, rather than blocking the calling thread
-outright. This needs `kotlinx-coroutines-core` as a dependency of
-`storage` (and `core`, since the interfaces themselves live there and
-`suspend` is a language keyword, not a coroutines-library type — no
-other coroutines API leaks into `core`).
+processing) for the duration of every DB write.
+
+`storage` implements each method using Exposed 1.0's `suspendTransaction`
+(exposed-jdbc), wrapped in `withContext(Dispatchers.IO)` to move the
+blocking JDBC work off the calling coroutine's dispatcher:
+
+```kotlin
+suspend fun create(expense: Expense) = withContext(Dispatchers.IO) {
+    suspendTransaction(db) {
+        // insert into expense + expense_share
+    }
+}
+```
+
+Note for implementation: Exposed had an older, since-removed
+`newSuspendedTransaction(context: CoroutineContext)` API (pre-1.0,
+package `transactions.experimental`) that took a dispatcher argument
+directly. Exposed 1.0 (stable, released January 2026) replaced it with
+`suspendTransaction()`, which has no dispatcher parameter — the
+`withContext(Dispatchers.IO)` wrapper above is what the current docs
+recommend for controlling where the blocking work runs. Pin the exact
+`exposed-core`/`exposed-jdbc` versions during implementation and use
+this pattern, not the older API.
+
+This needs `kotlinx-coroutines-core` as a dependency of `storage` (and
+`core`, since the interfaces themselves live there and `suspend` is a
+language keyword, not a coroutines-library type — no other coroutines
+API leaks into `core`).
 
 ## Core prerequisite
 
@@ -247,8 +267,8 @@ the boundary instead of silently truncating money.
 
 ## Transactions
 
-Every multi-row write goes through exactly one
-`newSuspendedTransaction(Dispatchers.IO) { }` block inside the
+Every multi-row write goes through exactly one `suspendTransaction { }`
+block (wrapped in `withContext(Dispatchers.IO)`, per above) inside the
 repository method that performs it — e.g. `ExpenseRepository.create`
 inserts the `expense` row and all `expense_share` rows in a single
 transaction, so a partial write (which would corrupt balance
