@@ -35,9 +35,17 @@ Repository interfaces live in `core` as ports:
   external platform ID to a core `MemberId`/`GroupId`. Not used by any
   balance/settlement logic.
 
-Each is a plain Kotlin interface with suspend-free, synchronous methods
-(no reactive/coroutine wrapping needed at this scale — the bot processes
-one Telegram update at a time via long-polling).
+Each method is `suspend fun`. JDBC itself is blocking — there's no async
+SQLite driver — but the bot's long-polling loop is coroutine-based, and a
+blocking repository call would stall it (and any concurrent update
+processing) for the duration of every DB write. `storage` implements
+each method with Exposed's `newSuspendedTransaction(Dispatchers.IO) { }`,
+which suspends the caller's coroutine while running the blocking JDBC
+work on an IO-dispatcher thread, rather than blocking the calling thread
+outright. This needs `kotlinx-coroutines-core` as a dependency of
+`storage` (and `core`, since the interfaces themselves live there and
+`suspend` is a language keyword, not a coroutines-library type — no
+other coroutines API leaks into `core`).
 
 ## Core prerequisite
 
@@ -86,35 +94,35 @@ implementation):
 
 ```kotlin
 interface MemberRepository {
-    fun create(member: Member)
-    fun find(id: MemberId): Member?
-    fun findByGroup(groupId: GroupId): List<Member>
+    suspend fun create(member: Member)
+    suspend fun find(id: MemberId): Member?
+    suspend fun findByGroup(groupId: GroupId): List<Member>
 }
 
 interface GroupRepository {
-    fun create(group: Group)
-    fun find(id: GroupId): Group?
-    fun addMember(groupId: GroupId, memberId: MemberId)
+    suspend fun create(group: Group)
+    suspend fun find(id: GroupId): Group?
+    suspend fun addMember(groupId: GroupId, memberId: MemberId)
 }
 
 interface ExpenseRepository {
-    fun create(expense: Expense)          // writes expense + expense_share rows in one transaction
-    fun find(id: ExpenseId): Expense?
-    fun listActive(groupId: GroupId, currency: String): List<Expense>  // deletedAt IS NULL
-    fun softDelete(id: ExpenseId, deletedAt: Instant)
+    suspend fun create(expense: Expense)          // writes expense + expense_share rows in one transaction
+    suspend fun find(id: ExpenseId): Expense?
+    suspend fun listActive(groupId: GroupId, currency: String): List<Expense>  // deletedAt IS NULL
+    suspend fun softDelete(id: ExpenseId, deletedAt: Instant)
 }
 
 interface SettlementRepository {
-    fun create(settlement: Settlement)
-    fun listActive(groupId: GroupId, currency: String): List<Settlement>
-    fun softDelete(id: SettlementId, deletedAt: Instant)
+    suspend fun create(settlement: Settlement)
+    suspend fun listActive(groupId: GroupId, currency: String): List<Settlement>
+    suspend fun softDelete(id: SettlementId, deletedAt: Instant)
 }
 
 interface PlatformDirectory {
-    fun findMember(platform: String, externalUserId: String): MemberId?
-    fun linkMember(platform: String, externalUserId: String, memberId: MemberId)
-    fun findGroup(platform: String, externalChatId: String): GroupId?
-    fun linkGroup(platform: String, externalChatId: String, groupId: GroupId)
+    suspend fun findMember(platform: String, externalUserId: String): MemberId?
+    suspend fun linkMember(platform: String, externalUserId: String, memberId: MemberId)
+    suspend fun findGroup(platform: String, externalChatId: String): GroupId?
+    suspend fun linkGroup(platform: String, externalChatId: String, groupId: GroupId)
 }
 ```
 
@@ -239,13 +247,13 @@ the boundary instead of silently truncating money.
 
 ## Transactions
 
-Every multi-row write goes through exactly one Exposed `transaction { }`
-block inside the repository method that performs it — e.g.
-`ExpenseRepository.create` inserts the `expense` row and all
-`expense_share` rows in a single transaction, so a partial write (which
-would corrupt balance calculations) can't happen. Adapter code never
-issues raw SQL and never spans a transaction across two repository
-calls.
+Every multi-row write goes through exactly one
+`newSuspendedTransaction(Dispatchers.IO) { }` block inside the
+repository method that performs it — e.g. `ExpenseRepository.create`
+inserts the `expense` row and all `expense_share` rows in a single
+transaction, so a partial write (which would corrupt balance
+calculations) can't happen. Adapter code never issues raw SQL and never
+spans a transaction across two repository calls.
 
 ## Testing
 
@@ -258,7 +266,9 @@ an empty DB; a temp file sidesteps that entirely and exercises the exact
 migration path production uses.
 
 Kotest (already used in `core`) is reused for `storage` tests, following
-the same spec style as the existing `core` test suite.
+the same spec style as the existing `core` test suite. Kotest's coroutine
+test support (`kotest-runner-junit5` runs suspend test bodies directly)
+covers calling `suspend fun` repository methods without extra setup.
 
 ## Deployment
 
