@@ -1092,18 +1092,21 @@ class CommandRouter(
         val from = message.from ?: return
         val text = message.text ?: return
 
-        val memberId = identityResolver.resolveMember(from.id.toString(), from.username, from.firstName)
-        val groupId = identityResolver.resolveGroup(message.chat.id.toString())
-        identityResolver.ensureGroupMembership(groupId, memberId)
-
         if (!text.startsWith("/")) return
 
         val (command, args) = parseCommand(text)
         val handler = handlers[command] ?: return
+
+        val memberId = identityResolver.resolveMember(from.id.toString(), from.username, from.firstName)
+        val groupId = identityResolver.resolveGroup(message.chat.id.toString())
+        identityResolver.ensureGroupMembership(groupId, memberId)
+
         handler(CommandContext(message.chat.id, memberId, from.id.toString(), groupId, args))
     }
 }
 ```
+
+Note: identity resolution happens only after a real, registered handler is found — not for every incoming message. With privacy mode on (see the bot design spec's "Identity resolution" section), non-command group chatter never reaches the adapter at all, but private chats deliver every message regardless of privacy mode, so the router itself must not treat arbitrary text as a registration trigger either.
 
 - [ ] **Step 5: Write `HelpCommand` and `StartCommand`**
 

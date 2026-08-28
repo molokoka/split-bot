@@ -79,4 +79,28 @@ class CommandRouterSpec : StringSpec({
             helpInvocations shouldBe emptyList()
         }
     }
+
+    "does not register identity for non-command text" {
+        withTestDatabase { db ->
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val resolver = IdentityResolver(platformDirectory, ExposedMemberRepository(db), ExposedGroupRepository(db))
+            val router = CommandRouter(resolver, mapOf("help" to { _: CommandContext -> }))
+
+            router.handleUpdate(anUpdate("just chatting"))
+
+            platformDirectory.findMember("telegram", "1") shouldBe null
+        }
+    }
+
+    "does not register identity for an unrecognized command" {
+        withTestDatabase { db ->
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val resolver = IdentityResolver(platformDirectory, ExposedMemberRepository(db), ExposedGroupRepository(db))
+            val router = CommandRouter(resolver, mapOf("help" to { _: CommandContext -> }))
+
+            router.handleUpdate(anUpdate("/unknown"))
+
+            platformDirectory.findMember("telegram", "1") shouldBe null
+        }
+    }
 })
