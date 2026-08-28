@@ -1409,7 +1409,7 @@ Pure functions — no repositories, no Telegram API — kept separate from `Memb
 
 **Interfaces:**
 - Consumes: `Expense`, `Member`, `MemberId`, `DebtPayment` (`core`).
-- Produces: `fun formatAmount(amount: BigDecimal): String`, `fun formatExpenseConfirmation(expense: Expense, members: List<Member>): String`, `fun formatExpenseList(expenses: List<Expense>): String`, `fun formatBalances(payments: List<DebtPayment>, members: List<Member>, viewerId: MemberId): String`, `fun formatSettleSuggestions(payments: List<DebtPayment>, members: List<Member>): String` — consumed by Tasks 10–15.
+- Produces: `fun formatAmount(amount: BigDecimal, currency: String): String`, `fun formatExpenseConfirmation(expense: Expense, members: List<Member>): String`, `fun formatExpenseList(expenses: List<Expense>): String`, `fun formatBalances(payments: List<DebtPayment>, members: List<Member>, viewerId: MemberId, currency: String): String`, `fun formatSettleSuggestions(payments: List<DebtPayment>, members: List<Member>, currency: String): String` — consumed by Tasks 10–15. Note `currency` is a separate parameter on `formatBalances`/`formatSettleSuggestions` because `DebtPayment` (from `core`'s `simplifyDebts`) doesn't carry a currency field — callers already have it in scope from the `(group, currency)` they computed balances for. `formatExpenseConfirmation`/`formatExpenseList` don't need it as a parameter since `Expense` already carries its own `currency`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1418,6 +1418,7 @@ Create `telegram/src/test/kotlin/split/telegram/MessageFormattingSpec.kt`:
 ```kotlin
 package split.telegram
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import java.math.BigDecimal
@@ -1437,16 +1438,16 @@ class MessageFormattingSpec : StringSpec({
     val bob = Member(MemberId("bob"), "Bob")
     val members = listOf(alice, bob)
 
-    "formatAmount renders two decimal places with a dollar sign" {
-        formatAmount(BigDecimal("90")) shouldBe "$90.00"
-        formatAmount(BigDecimal("12.5")) shouldBe "$12.50"
+    "formatAmount renders two decimal places with the currency code" {
+        formatAmount(BigDecimal("90"), "USD") shouldBe "90.00 USD"
+        formatAmount(BigDecimal("12.5"), "EUR") shouldBe "12.50 EUR"
     }
 
-    "formatExpenseConfirmation names payer and amount" {
+    "formatExpenseConfirmation names payer, amount, and currency" {
         val expense = Expense(
             id = ExpenseId("e1"),
             groupId = GroupId("g1"),
-            currency = "USD",
+            currency = "EUR",
             description = "dinner",
             amount = BigDecimal("90.00"),
             payerId = alice.id,
@@ -1456,7 +1457,24 @@ class MessageFormattingSpec : StringSpec({
             shares = listOf(ExpenseShare(alice.id, BigDecimal("45.00")), ExpenseShare(bob.id, BigDecimal("45.00"))),
         )
 
-        formatExpenseConfirmation(expense, members) shouldBe "Alice paid \$90.00 for dinner, split with Alice, Bob"
+        formatExpenseConfirmation(expense, members) shouldBe "Alice paid 90.00 EUR for dinner, split with Alice, Bob"
+    }
+
+    "formatExpenseConfirmation fails loudly if the payer isn't in the members list" {
+        val expense = Expense(
+            id = ExpenseId("e1"),
+            groupId = GroupId("g1"),
+            currency = "USD",
+            description = "dinner",
+            amount = BigDecimal("90.00"),
+            payerId = MemberId("not-a-member"),
+            splitType = SplitType.EQUAL,
+            createdBy = alice.id,
+            createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+            shares = listOf(ExpenseShare(alice.id, BigDecimal("90.00"))),
+        )
+
+        shouldThrow<NoSuchElementException> { formatExpenseConfirmation(expense, members) }
     }
 
     "formatExpenseList shows a short id, description, and amount per line" {
@@ -1473,7 +1491,7 @@ class MessageFormattingSpec : StringSpec({
             shares = emptyList(),
         )
 
-        formatExpenseList(listOf(expense)) shouldBe "[abcdef12] dinner — \$90.00"
+        formatExpenseList(listOf(expense)) shouldBe "[abcdef12] dinner — 90.00 USD"
     }
 
     "formatExpenseList explains there's nothing yet" {
@@ -1483,22 +1501,28 @@ class MessageFormattingSpec : StringSpec({
     "formatBalances phrases payments relative to the viewer" {
         val payments = listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00")))
 
-        formatBalances(payments, members, viewerId = alice.id) shouldBe "Bob owes you $30.00"
-        formatBalances(payments, members, viewerId = bob.id) shouldBe "You owe Alice $30.00"
+        formatBalances(payments, members, viewerId = alice.id, currency = "USD") shouldBe "Bob owes you 30.00 USD"
+        formatBalances(payments, members, viewerId = bob.id, currency = "USD") shouldBe "You owe Alice 30.00 USD"
     }
 
     "formatBalances says everyone's settled up when there's nothing relevant" {
-        formatBalances(emptyList(), members, viewerId = alice.id) shouldBe "You're all settled up!"
+        formatBalances(emptyList(), members, viewerId = alice.id, currency = "USD") shouldBe "You're all settled up!"
+    }
+
+    "formatBalances fails loudly if a payment references a member outside the group" {
+        val payments = listOf(DebtPayment(from = MemberId("not-a-member"), to = alice.id, amount = BigDecimal("30.00")))
+
+        shouldThrow<NoSuchElementException> { formatBalances(payments, members, viewerId = alice.id, currency = "USD") }
     }
 
     "formatSettleSuggestions lists every payment" {
         val payments = listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00")))
 
-        formatSettleSuggestions(payments, members) shouldBe "Bob pays Alice \$30.00"
+        formatSettleSuggestions(payments, members, currency = "USD") shouldBe "Bob pays Alice 30.00 USD"
     }
 
     "formatSettleSuggestions says everyone's settled up when there's nothing to do" {
-        formatSettleSuggestions(emptyList(), members) shouldBe "Everyone's settled up — nothing to do!"
+        formatSettleSuggestions(emptyList(), members, currency = "USD") shouldBe "Everyone's settled up — nothing to do!"
     }
 })
 ```
@@ -1522,53 +1546,57 @@ import split.core.MemberId
 import java.math.BigDecimal
 import java.math.RoundingMode
 
-fun formatAmount(amount: BigDecimal): String = "$" + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString()
+fun formatAmount(amount: BigDecimal, currency: String): String =
+    "${amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString()} $currency"
 
 fun formatExpenseConfirmation(expense: Expense, members: List<Member>): String {
     val nameOf = members.associateBy { it.id }
-    val payerName = nameOf[expense.payerId]?.displayName ?: "Someone"
-    val participantNames = expense.shares.joinToString(", ") { nameOf[it.memberId]?.displayName ?: "someone" }
-    return "$payerName paid ${formatAmount(expense.amount)} for ${expense.description}, split with $participantNames"
+    val payerName = nameOf.getValue(expense.payerId).displayName
+    val participantNames = expense.shares.joinToString(", ") { nameOf.getValue(it.memberId).displayName }
+    return "$payerName paid ${formatAmount(expense.amount, expense.currency)} for ${expense.description}, " +
+        "split with $participantNames"
 }
 
 fun formatExpenseList(expenses: List<Expense>): String {
     if (expenses.isEmpty()) return "No expenses yet — use /add to log one."
     return expenses.joinToString("\n") { expense ->
         val shortId = expense.id.value.take(8)
-        "[$shortId] ${expense.description} — ${formatAmount(expense.amount)}"
+        "[$shortId] ${expense.description} — ${formatAmount(expense.amount, expense.currency)}"
     }
 }
 
-fun formatBalances(payments: List<DebtPayment>, members: List<Member>, viewerId: MemberId): String {
+fun formatBalances(payments: List<DebtPayment>, members: List<Member>, viewerId: MemberId, currency: String): String {
     val nameOf = members.associateBy { it.id }
     val relevant = payments.filter { it.from == viewerId || it.to == viewerId }
     if (relevant.isEmpty()) return "You're all settled up!"
 
     return relevant.joinToString("\n") { payment ->
-        val amount = formatAmount(payment.amount)
+        val amount = formatAmount(payment.amount, currency)
         if (payment.from == viewerId) {
-            "You owe ${nameOf[payment.to]?.displayName ?: "someone"} $amount"
+            "You owe ${nameOf.getValue(payment.to).displayName} $amount"
         } else {
-            "${nameOf[payment.from]?.displayName ?: "someone"} owes you $amount"
+            "${nameOf.getValue(payment.from).displayName} owes you $amount"
         }
     }
 }
 
-fun formatSettleSuggestions(payments: List<DebtPayment>, members: List<Member>): String {
+fun formatSettleSuggestions(payments: List<DebtPayment>, members: List<Member>, currency: String): String {
     if (payments.isEmpty()) return "Everyone's settled up — nothing to do!"
     val nameOf = members.associateBy { it.id }
     return payments.joinToString("\n") { payment ->
-        val from = nameOf[payment.from]?.displayName ?: "someone"
-        val to = nameOf[payment.to]?.displayName ?: "someone"
-        "$from pays $to ${formatAmount(payment.amount)}"
+        val from = nameOf.getValue(payment.from).displayName
+        val to = nameOf.getValue(payment.to).displayName
+        "$from pays $to ${formatAmount(payment.amount, currency)}"
     }
 }
 ```
 
+Note: `nameOf.getValue(id)` (not `nameOf[id] ?: "someone"`) is deliberate — a payer or share/payment participant missing from the group's member list is a data-integrity bug upstream, not a display edge case, and should fail loudly (`NoSuchElementException`) rather than silently showing "someone" to users.
+
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `./gradlew :telegram:test --tests "split.telegram.MessageFormattingSpec"`
-Expected: `BUILD SUCCESSFUL`, 8 tests pass.
+Expected: `BUILD SUCCESSFUL`, 10 tests pass.
 
 - [ ] **Step 5: Commit**
 
@@ -2040,7 +2068,10 @@ class DeleteExpenseCommand(
         }
 
         expenseRepository.softDelete(expense.id, Instant.now(clock))
-        telegramApi.sendMessage(context.chatId, "Deleted \"${expense.description}\" (${formatAmount(expense.amount)}).")
+        telegramApi.sendMessage(
+            context.chatId,
+            "Deleted \"${expense.description}\" (${formatAmount(expense.amount, expense.currency)}).",
+        )
     }
 }
 ```
@@ -2259,7 +2290,7 @@ class BalancesCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, bobId, "2", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(-100L to "You owe Alice \$30.00")
+            telegramApi.sentMessages shouldBe listOf(-100L to "You owe Alice 30.00 USD")
         }
     }
 
@@ -2318,7 +2349,10 @@ class BalancesCommand(
         val payments = simplifyDebts(balances)
         val members = memberRepository.findByGroup(context.groupId)
 
-        telegramApi.sendMessage(context.chatId, formatBalances(payments, members, context.memberId))
+        telegramApi.sendMessage(
+            context.chatId,
+            formatBalances(payments, members, context.memberId, group.defaultCurrency),
+        )
     }
 }
 ```
@@ -2504,7 +2538,7 @@ class SettleCommand(
         }
 
         settlementRepository.create(settlement)
-        telegramApi.sendMessage(context.chatId, "Recorded: you paid ${formatAmount(settlement.amount)}.")
+        telegramApi.sendMessage(context.chatId, "Recorded: you paid ${formatAmount(settlement.amount, settlement.currency)}.")
     }
 }
 ```
@@ -2595,7 +2629,7 @@ class SettleSuggestCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(-100L to "Bob pays Alice \$30.00")
+            telegramApi.sentMessages shouldBe listOf(-100L to "Bob pays Alice 30.00 USD")
         }
     }
 
@@ -2654,7 +2688,10 @@ class SettleSuggestCommand(
         val payments = simplifyDebts(balances)
         val members = memberRepository.findByGroup(context.groupId)
 
-        telegramApi.sendMessage(context.chatId, formatSettleSuggestions(payments, members))
+        telegramApi.sendMessage(
+            context.chatId,
+            formatSettleSuggestions(payments, members, group.defaultCurrency),
+        )
     }
 }
 ```
