@@ -632,7 +632,7 @@ git commit -m "Add TelegramApi interface and HTTP implementation"
 
 ### Task 4: `IdentityResolver`
 
-Resolves an incoming Telegram user/chat to a `core` `MemberId`/`GroupId`, creating them on first sight — the passive-observation identity resolution the bot design calls for.
+Resolves an incoming Telegram user/chat to a `core` `MemberId`/`GroupId`, creating them on first sight. With Telegram privacy mode left on (see the bot design doc's "Identity resolution" section), the only messages that ever reach the adapter are command messages — so "first sight" in practice means "the first command this user or chat ever sent," `/start` being the natural one but not the only one that counts.
 
 **Files:**
 - Create: `telegram/src/test/kotlin/split/telegram/TestDatabase.kt`
@@ -1688,7 +1688,7 @@ class AddExpenseCommandSpec : StringSpec({
 
             expenseRepository.listActive(groupId, "USD") shouldBe emptyList()
             telegramApi.sentMessages.single().second shouldBe
-                "I don't recognize @stranger yet — ask them to send a message in this chat or run /start with me first."
+                "I don't recognize @stranger yet — ask them to run /start with me first."
         }
     }
 })
@@ -1782,7 +1782,7 @@ class AddExpenseCommand(
             if (participantId == null) {
                 telegramApi.sendMessage(
                     context.chatId,
-                    "I don't recognize @$username yet — ask them to send a message in this chat or run /start with me first.",
+                    "I don't recognize @$username yet — ask them to run /start with me first.",
                 )
                 return
             }
@@ -2418,7 +2418,7 @@ class SettleCommandSpec : StringSpec({
 
             settlementRepository.listActive(groupId, "USD") shouldBe emptyList()
             telegramApi.sentMessages.single().second shouldBe
-                "I don't recognize @stranger yet — ask them to send a message in this chat or run /start with me first."
+                "I don't recognize @stranger yet — ask them to run /start with me first."
         }
     }
 })
@@ -2479,7 +2479,7 @@ class SettleCommand(
         if (counterpartyId == null) {
             telegramApi.sendMessage(
                 context.chatId,
-                "I don't recognize @${parsed.counterpartyUsername} yet — ask them to send a message in this chat or run /start with me first.",
+                "I don't recognize @${parsed.counterpartyUsername} yet — ask them to run /start with me first.",
             )
             return
         }

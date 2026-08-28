@@ -25,11 +25,11 @@ A single Kotlin process, split into two layers:
 The bot connects to Telegram via **long-polling** (no public webhook or
 inbound network exposure needed). Storage is **SQLite**, one file on disk.
 
-Bot privacy mode is disabled (via BotFather `/setprivacy` → Disable) so the
-adapter passively observes every message in a group it's part of, not just
-commands — this is what lets it learn a member's Telegram user ID from any
-message they send, not only from an explicit `/start` (see "Identity
-resolution" below).
+Bot privacy mode is left **on** (the BotFather default) — the adapter only
+ever receives command messages, replies to its own messages, and messages
+in a private chat with it, never arbitrary group chatter. Every member
+learns their Telegram user ID to the bot by running `/start` (or any other
+command) at least once — see "Identity resolution" below.
 
 **Deployment**: a small AWS EC2 instance (t4g.micro or similar), the JVM
 process managed by `systemd` for auto-restart on crash or reboot, SQLite
@@ -97,13 +97,17 @@ https://claude.ai/code/artifact/c7aec92c-321b-4284-8b89-2dd036532497
 
 The Telegram Bot API cannot resolve an arbitrary `@username` to a numeric
 user ID unless the bot has already received a message from that user —
-there is no "list all group members" call for regular bots. Two
-mitigations, both adopted:
+there is no "list all group members" call for regular bots. Three
+mitigations, all adopted:
 
-1. **Privacy mode disabled** — the bot passively observes every message in
-   a group (not just commands/replies) and caches
-   `username → user_id → member_id` into `PlatformIdentity` the first time
-   it sees a message from anyone, without requiring an explicit `/start`.
+1. **Explicit registration via any command, privacy mode on** — Telegram
+   privacy mode stays on (the BotFather default), so the adapter never
+   sees arbitrary group chatter — only command messages, replies to its
+   own messages, and private-chat messages reach it. It caches
+   `username → user_id → member_id` into `PlatformIdentity` the moment
+   anyone runs their first command (`/start` is the natural one, but any
+   command works, since every command message carries the sender's
+   Telegram user ID and username).
 2. **Button-based participant selection as the primary `/add` flow** —
    `/add 90 dinner` with no mentions opens an inline keyboard populated
    from the group's already-known members (`/members`), so you tap who
