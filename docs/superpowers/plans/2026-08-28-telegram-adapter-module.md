@@ -6,7 +6,7 @@
 
 **Architecture:** A new `telegram` module depends on `core` (domain types + repository ports) and `storage` (Exposed repository implementations). It talks to the Telegram Bot API over plain HTTP (no bot framework), resolves each incoming message's sender/chat to a `MemberId`/`GroupId` via `IdentityResolver`, and dispatches `/command` text through a small `CommandRouter` to one handler class per command. Every command handler is a thin coroutine function: read via repositories, run pure `core` logic (split resolution, balances, debt simplification), write via repositories, reply via `TelegramApi`.
 
-**Tech Stack:** Kotlin 2.4.0 / JVM 17, kotlinx-coroutines-core 1.11.0, kotlinx-serialization-json 1.11.0, JDK `java.net.http.HttpClient` (no HTTP client dependency), Kotest 5.9.1 (`StringSpec`), JDK `com.sun.net.httpserver.HttpServer` as a local stub for HTTP-client tests.
+**Tech Stack:** Kotlin 2.4.0 / JVM 17, kotlinx-coroutines-core 1.11.0, kotlinx-serialization-json 1.11.0, Ktor client 3.5.2 (`ktor-client-core`, `ktor-client-cio` engine, `ktor-client-content-negotiation`, `ktor-serialization-kotlinx-json`) for the Telegram Bot API, Kotest 5.9.1 (`StringSpec`), `ktor-client-mock`'s `MockEngine` for `HttpTelegramApi` tests.
 
 **Spec:** `docs/superpowers/specs/2026-08-26-telegram-split-bot-design.md` (bot design — architecture, identity resolution, commands, debt simplification) and `docs/superpowers/specs/2026-08-27-sqlite-persistence-design.md` (already-implemented `core`/`storage` layers this plan builds on).
 
@@ -16,9 +16,10 @@
 - Kotest `5.9.1` (`kotest-runner-junit5`, `kotest-assertions-core`), `StringSpec` style, matching existing `core`/`storage` tests.
 - `kotlinx-coroutines-core` `1.11.0` — matches `storage`.
 - `kotlinx-serialization-json` `1.11.0` (verified current on Maven Central at plan-writing time).
-- No new HTTP client dependency — use JDK's built-in `java.net.http.HttpClient`, wrapped in `withContext(Dispatchers.IO)` (same pattern `storage` uses for JDBC).
-- All I/O-touching functions are `suspend fun`; blocking work always wrapped in `withContext(Dispatchers.IO)`.
-- Tests prefer real integration doubles over mocks: a real temp-file SQLite database via `connectDatabase` (same as `storage`'s `withTestDatabase`) for anything touching repositories, and a local JDK `HttpServer` stub for anything touching `HttpTelegramApi`. A `FakeTelegramApi` in-memory recorder is used only for command-handler/router tests that don't need real HTTP.
+- Ktor client `3.5.2` (`ktor-client-core`, `ktor-client-cio` engine, `ktor-client-content-negotiation`, `ktor-serialization-kotlinx-json`; `ktor-client-mock` for tests — all verified current on Maven Central at plan-writing time) for the Telegram Bot API HTTP calls. Ktor's client is coroutine-native, so unlike `storage`'s JDBC calls, HTTP calls do **not** need `withContext(Dispatchers.IO)` wrapping.
+- Ktor code (`HttpTelegramApi.kt` and its test) uses wildcard `io.ktor.*` imports — a deliberate, scoped exception to this project's usual explicit-import convention, matching Ktor's own idiomatic style (its DSL surface, e.g. `install(...)`, is large and always used this way in Ktor's own docs and samples).
+- All I/O-touching functions are `suspend fun`; JDBC work in `storage` is wrapped in `withContext(Dispatchers.IO)` (unchanged from Task 1 on).
+- Tests prefer real integration doubles over mocks: a real temp-file SQLite database via `connectDatabase` (same as `storage`'s `withTestDatabase`) for anything touching repositories, and Ktor's `MockEngine` for anything touching `HttpTelegramApi`. A `FakeTelegramApi` in-memory recorder is used only for command-handler/router tests that don't need real HTTP.
 - Platform identifier string is always the literal `"telegram"` (matches `PlatformIdentity`/`PlatformGroupLink.platform`).
 - Money stays `BigDecimal` end-to-end in this module — the adapter never touches cents; `storage` already handles that conversion at its own boundary.
 - IDs are generated with `UUID.randomUUID().toString()`, wrapped in the relevant `core` value class (`MemberId`, `GroupId`, `ExpenseId`).
@@ -255,6 +256,7 @@ repositories {
 }
 
 val kotestVersion = "5.9.1"
+val ktorVersion = "3.5.2"
 
 dependencies {
     implementation(project(":core"))
@@ -262,9 +264,14 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    implementation("io.ktor:ktor-client-core:$ktorVersion")
+    implementation("io.ktor:ktor-client-cio:$ktorVersion")
+    implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
 
     testImplementation("io.kotest:kotest-runner-junit5:$kotestVersion")
     testImplementation("io.kotest:kotest-assertions-core:$kotestVersion")
+    testImplementation("io.ktor:ktor-client-mock:$ktorVersion")
 }
 
 tasks.test {
@@ -443,117 +450,95 @@ git commit -m "Add telegram module scaffold and Bot API DTOs"
 
 **Interfaces:**
 - Consumes: `TgUpdate`, `TgChatMember`, `GetUpdatesResponse`, `GetChatAdministratorsResponse`, `SendMessageRequest` (Task 2).
-- Produces: `interface TelegramApi { suspend fun getUpdates(offset: Long?, timeoutSeconds: Int): List<TgUpdate>; suspend fun sendMessage(chatId: Long, text: String); suspend fun getChatAdministrators(chatId: Long): List<TgChatMember> }`, `class HttpTelegramApi(botToken: String, baseUrl: String = "https://api.telegram.org", httpClient: HttpClient = HttpClient.newHttpClient()) : TelegramApi`.
+- Produces: `interface TelegramApi { suspend fun getUpdates(offset: Long?, timeoutSeconds: Int): List<TgUpdate>; suspend fun sendMessage(chatId: Long, text: String); suspend fun getChatAdministrators(chatId: Long): List<TgChatMember> }`, `class HttpTelegramApi(botToken: String, baseUrl: String = "https://api.telegram.org", httpClient: HttpClient = <default Ktor CIO client with JSON content negotiation>) : TelegramApi`.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `telegram/src/test/kotlin/split/telegram/HttpTelegramApiSpec.kt`:
+Create `telegram/src/test/kotlin/split/telegram/HttpTelegramApiSpec.kt`. This uses `ktor-client-mock`'s `MockEngine` — the idiomatic way to test a Ktor client without a real network call, replacing what would otherwise be a local `HttpServer` stub:
 
 ```kotlin
 package split.telegram
 
-import com.sun.net.httpserver.HttpServer
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
-import java.net.InetSocketAddress
+import io.ktor.client.*
+import io.ktor.client.engine.mock.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.request.*
+import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
+import io.ktor.utils.io.*
+import kotlinx.serialization.json.Json
 
 class HttpTelegramApiSpec : StringSpec({
 
-    "getUpdates parses the response and requests the right path" {
-        val server = HttpServer.create(InetSocketAddress(0), 0)
-        var receivedPath: String? = null
-        server.createContext("/") { exchange ->
-            receivedPath = exchange.requestURI.toString()
-            val body = """
-                {"ok":true,"result":[{"update_id":1,"message":{"message_id":10,
-                "from":{"id":99,"first_name":"Alice","username":"alice"},
-                "chat":{"id":-100,"type":"group"},"text":"/help"}}]}
-            """.trimIndent()
-            exchange.sendResponseHeaders(200, body.toByteArray().size.toLong())
-            exchange.responseBody.use { it.write(body.toByteArray()) }
-        }
-        server.start()
-
-        try {
-            val api = HttpTelegramApi(botToken = "test-token", baseUrl = "http://localhost:${server.address.port}")
-            val updates = api.getUpdates(offset = null, timeoutSeconds = 0)
-
-            updates shouldBe listOf(
-                TgUpdate(
-                    updateId = 1,
-                    message = TgMessage(
-                        messageId = 10,
-                        from = TgUser(id = 99, firstName = "Alice", username = "alice"),
-                        chat = TgChat(id = -100, type = "group"),
-                        text = "/help",
-                    ),
-                ),
+    fun clientReturning(body: String): Pair<HttpClient, MutableList<HttpRequestData>> {
+        val requests = mutableListOf<HttpRequestData>()
+        val engine = MockEngine { request ->
+            requests += request
+            respond(
+                content = ByteReadChannel(body),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )
-            receivedPath shouldBe "/bottest-token/getUpdates?timeout=0"
-        } finally {
-            server.stop(0)
         }
+        val client = HttpClient(engine) {
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        return client to requests
+    }
+
+    "getUpdates parses the response and requests the right path" {
+        val (httpClient, requests) = clientReturning(
+            """{"ok":true,"result":[{"update_id":1,"message":{"message_id":10,
+                "from":{"id":99,"first_name":"Alice","username":"alice"},
+                "chat":{"id":-100,"type":"group"},"text":"/help"}}]}""",
+        )
+        val api = HttpTelegramApi(botToken = "test-token", httpClient = httpClient)
+
+        val updates = api.getUpdates(offset = null, timeoutSeconds = 0)
+
+        updates shouldBe listOf(
+            TgUpdate(
+                updateId = 1,
+                message = TgMessage(
+                    messageId = 10,
+                    from = TgUser(id = 99, firstName = "Alice", username = "alice"),
+                    chat = TgChat(id = -100, type = "group"),
+                    text = "/help",
+                ),
+            ),
+        )
+        requests.single().url.toString() shouldBe "https://api.telegram.org/bottest-token/getUpdates?timeout=0"
     }
 
     "getUpdates includes the offset when given" {
-        val server = HttpServer.create(InetSocketAddress(0), 0)
-        var receivedPath: String? = null
-        server.createContext("/") { exchange ->
-            receivedPath = exchange.requestURI.toString()
-            val body = """{"ok":true,"result":[]}"""
-            exchange.sendResponseHeaders(200, body.toByteArray().size.toLong())
-            exchange.responseBody.use { it.write(body.toByteArray()) }
-        }
-        server.start()
+        val (httpClient, requests) = clientReturning("""{"ok":true,"result":[]}""")
+        val api = HttpTelegramApi(botToken = "tok", httpClient = httpClient)
 
-        try {
-            val api = HttpTelegramApi(botToken = "tok", baseUrl = "http://localhost:${server.address.port}")
-            api.getUpdates(offset = 42, timeoutSeconds = 5)
+        api.getUpdates(offset = 42, timeoutSeconds = 5)
 
-            receivedPath shouldBe "/bottok/getUpdates?timeout=5&offset=42"
-        } finally {
-            server.stop(0)
-        }
+        requests.single().url.toString() shouldBe "https://api.telegram.org/bottok/getUpdates?timeout=5&offset=42"
     }
 
     "sendMessage posts chat_id and text as JSON" {
-        val server = HttpServer.create(InetSocketAddress(0), 0)
-        var receivedBody: String? = null
-        server.createContext("/") { exchange ->
-            receivedBody = exchange.requestBody.readBytes().decodeToString()
-            val body = """{"ok":true}"""
-            exchange.sendResponseHeaders(200, body.toByteArray().size.toLong())
-            exchange.responseBody.use { it.write(body.toByteArray()) }
-        }
-        server.start()
+        val (httpClient, requests) = clientReturning("""{"ok":true}""")
+        val api = HttpTelegramApi(botToken = "tok", httpClient = httpClient)
 
-        try {
-            val api = HttpTelegramApi(botToken = "tok", baseUrl = "http://localhost:${server.address.port}")
-            api.sendMessage(chatId = -100, text = "hi")
+        api.sendMessage(chatId = -100, text = "hi")
 
-            receivedBody shouldBe """{"chat_id":-100,"text":"hi"}"""
-        } finally {
-            server.stop(0)
-        }
+        requests.single().body.toByteArray().decodeToString() shouldBe """{"chat_id":-100,"text":"hi"}"""
     }
 
     "getChatAdministrators parses the response" {
-        val server = HttpServer.create(InetSocketAddress(0), 0)
-        server.createContext("/") { exchange ->
-            val body = """{"ok":true,"result":[{"status":"creator","user":{"id":7,"first_name":"Owner"}}]}"""
-            exchange.sendResponseHeaders(200, body.toByteArray().size.toLong())
-            exchange.responseBody.use { it.write(body.toByteArray()) }
-        }
-        server.start()
+        val (httpClient, _) = clientReturning(
+            """{"ok":true,"result":[{"status":"creator","user":{"id":7,"first_name":"Owner"}}]}""",
+        )
+        val api = HttpTelegramApi(botToken = "tok", httpClient = httpClient)
 
-        try {
-            val api = HttpTelegramApi(botToken = "tok", baseUrl = "http://localhost:${server.address.port}")
-            val admins = api.getChatAdministrators(chatId = -100)
+        val admins = api.getChatAdministrators(chatId = -100)
 
-            admins shouldBe listOf(TgChatMember(status = "creator", user = TgUser(id = 7, firstName = "Owner")))
-        } finally {
-            server.stop(0)
-        }
+        admins shouldBe listOf(TgChatMember(status = "creator", user = TgUser(id = 7, firstName = "Owner")))
     }
 })
 ```
@@ -584,56 +569,50 @@ Create `telegram/src/main/kotlin/split/telegram/HttpTelegramApi.kt`:
 ```kotlin
 package split.telegram
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.encodeToString
+import io.ktor.client.*
+import io.ktor.client.call.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.request.*
+import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.json.Json
-import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 
 class HttpTelegramApi(
     private val botToken: String,
     private val baseUrl: String = "https://api.telegram.org",
-    private val httpClient: HttpClient = HttpClient.newHttpClient(),
+    private val httpClient: HttpClient = HttpClient(CIO) {
+        install(ContentNegotiation) {
+            json(Json { ignoreUnknownKeys = true })
+        }
+    },
 ) : TelegramApi {
-
-    private val json = Json { ignoreUnknownKeys = true }
 
     override suspend fun getUpdates(offset: Long?, timeoutSeconds: Int): List<TgUpdate> {
         val query = buildString {
             append("timeout=$timeoutSeconds")
             if (offset != null) append("&offset=$offset")
         }
-        val body = get("getUpdates?$query")
-        return json.decodeFromString(GetUpdatesResponse.serializer(), body).result
+        val response: GetUpdatesResponse = httpClient.get("$baseUrl/bot$botToken/getUpdates?$query").body()
+        return response.result
     }
 
     override suspend fun sendMessage(chatId: Long, text: String) {
-        val requestBody = json.encodeToString(SendMessageRequest.serializer(), SendMessageRequest(chatId, text))
-        post("sendMessage", requestBody)
+        httpClient.post("$baseUrl/bot$botToken/sendMessage") {
+            contentType(ContentType.Application.Json)
+            setBody(SendMessageRequest(chatId, text))
+        }
     }
 
     override suspend fun getChatAdministrators(chatId: Long): List<TgChatMember> {
-        val body = get("getChatAdministrators?chat_id=$chatId")
-        return json.decodeFromString(GetChatAdministratorsResponse.serializer(), body).result
-    }
-
-    private suspend fun get(path: String): String = withContext(Dispatchers.IO) {
-        val request = HttpRequest.newBuilder(URI.create("$baseUrl/bot$botToken/$path")).GET().build()
-        httpClient.send(request, HttpResponse.BodyHandlers.ofString()).body()
-    }
-
-    private suspend fun post(path: String, requestBody: String): String = withContext(Dispatchers.IO) {
-        val request = HttpRequest.newBuilder(URI.create("$baseUrl/bot$botToken/$path"))
-            .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-            .build()
-        httpClient.send(request, HttpResponse.BodyHandlers.ofString()).body()
+        val response: GetChatAdministratorsResponse =
+            httpClient.get("$baseUrl/bot$botToken/getChatAdministrators?chat_id=$chatId").body()
+        return response.result
     }
 }
 ```
+
+Note: unlike `storage`'s JDBC calls, these Ktor client calls are not wrapped in `withContext(Dispatchers.IO)` — Ktor's `CIO` engine is coroutine-native (non-blocking NIO under the hood), so no thread-pool offload is needed.
 
 - [ ] **Step 5: Run test to verify it passes**
 
