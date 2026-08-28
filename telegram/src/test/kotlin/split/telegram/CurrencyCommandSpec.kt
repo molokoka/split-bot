@@ -1,0 +1,41 @@
+package split.telegram
+
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.shouldBe
+import split.core.MemberId
+import split.storage.ExposedGroupRepository
+import split.storage.ExposedMemberRepository
+import split.storage.ExposedPlatformDirectory
+
+class CurrencyCommandSpec : StringSpec({
+
+    "sets the group's default currency" {
+        withTestDatabase { db ->
+            val groupRepository = ExposedGroupRepository(db)
+            val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)
+            val groupId = resolver.resolveGroup("-100001")
+            val telegramApi = FakeTelegramApi()
+            val command = CurrencyCommand(groupRepository, telegramApi)
+
+            command.handle(CommandContext(-100, MemberId("m1"), "1", groupId, "EUR"))
+
+            groupRepository.find(groupId)!!.defaultCurrency shouldBe "EUR"
+            telegramApi.sentMessages shouldBe listOf(-100L to "This group's default currency is now EUR.")
+        }
+    }
+
+    "rejects an invalid currency code" {
+        withTestDatabase { db ->
+            val groupRepository = ExposedGroupRepository(db)
+            val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)
+            val groupId = resolver.resolveGroup("-100001")
+            val telegramApi = FakeTelegramApi()
+            val command = CurrencyCommand(groupRepository, telegramApi)
+
+            command.handle(CommandContext(-100, MemberId("m1"), "1", groupId, "not a code"))
+
+            groupRepository.find(groupId)!!.defaultCurrency shouldBe IdentityResolver.DEFAULT_CURRENCY
+            telegramApi.sentMessages shouldBe listOf(-100L to "Usage: /currency <3-letter code>, e.g. /currency EUR")
+        }
+    }
+})
