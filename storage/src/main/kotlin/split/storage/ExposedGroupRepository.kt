@@ -8,6 +8,7 @@ import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
+import org.jetbrains.exposed.v1.jdbc.update
 import java.time.Instant
 import split.core.Group
 import split.core.GroupId
@@ -40,6 +41,14 @@ class ExposedGroupRepository(private val db: Database) : GroupRepository {
             GroupMemberTable.insert {
                 it[this.groupId] = groupId.value
                 it[this.memberId] = memberId.value
+            }
+        }
+    }
+
+    override suspend fun updateCurrency(id: GroupId, currency: String): Unit = withContext(Dispatchers.IO) {
+        suspendTransaction(db) {
+            GroupTable.update({ GroupTable.id eq id.value }) {
+                it[defaultCurrency] = currency
             }
         }
     }

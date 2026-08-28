@@ -59,6 +59,7 @@ object PlatformIdentityTable : Table("platform_identity") {
     val platform = text("platform")
     val externalUserId = text("external_user_id")
     val memberId = text("member_id").references(MemberTable.id)
+    val username = text("username").nullable()
     override val primaryKey = PrimaryKey(platform, externalUserId)
 }
 

@@ -45,4 +45,22 @@ class ExposedPlatformDirectorySpec : StringSpec({
             ExposedPlatformDirectory(db).findGroup("telegram", "unknown") shouldBe null
         }
     }
+
+    "finds a member by username after it's been set" {
+        withTestDatabase { db ->
+            ExposedMemberRepository(db).create(Member(MemberId("alice"), "Alice"))
+            val directory = ExposedPlatformDirectory(db)
+            directory.linkMember("telegram", "123456", MemberId("alice"))
+
+            directory.setUsername("telegram", "123456", "alice_w")
+
+            directory.findMemberByUsername("telegram", "alice_w") shouldBe MemberId("alice")
+        }
+    }
+
+    "returns null for an unknown username" {
+        withTestDatabase { db ->
+            ExposedPlatformDirectory(db).findMemberByUsername("telegram", "nobody") shouldBe null
+        }
+    }
 })

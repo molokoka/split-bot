@@ -8,6 +8,7 @@ import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
+import org.jetbrains.exposed.v1.jdbc.update
 import split.core.GroupId
 import split.core.MemberId
 import split.core.PlatformDirectory
@@ -34,6 +35,31 @@ class ExposedPlatformDirectory(private val db: Database) : PlatformDirectory {
                     it[this.platform] = platform
                     it[this.externalUserId] = externalUserId
                     it[this.memberId] = memberId.value
+                }
+            }
+        }
+
+    override suspend fun findMemberByUsername(platform: String, username: String): MemberId? =
+        withContext(Dispatchers.IO) {
+            suspendTransaction(db) {
+                PlatformIdentityTable.selectAll()
+                    .where {
+                        (PlatformIdentityTable.platform eq platform) and
+                            (PlatformIdentityTable.username eq username)
+                    }
+                    .map { MemberId(it[PlatformIdentityTable.memberId]) }
+                    .singleOrNull()
+            }
+        }
+
+    override suspend fun setUsername(platform: String, externalUserId: String, username: String): Unit =
+        withContext(Dispatchers.IO) {
+            suspendTransaction(db) {
+                PlatformIdentityTable.update({
+                    (PlatformIdentityTable.platform eq platform) and
+                        (PlatformIdentityTable.externalUserId eq externalUserId)
+                }) {
+                    it[this.username] = username
                 }
             }
         }

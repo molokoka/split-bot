@@ -48,4 +48,16 @@ class ExposedGroupRepositorySpec : StringSpec({
             memberRepo.findByGroup(group.id) shouldBe listOf(alice)
         }
     }
+
+    "updateCurrency changes a group's default currency" {
+        withTestDatabase { db ->
+            val repo = ExposedGroupRepository(db)
+            val group = Group(GroupId("g1"), "USD", Instant.parse("2026-08-27T00:00:00Z"))
+            repo.create(group)
+
+            repo.updateCurrency(GroupId("g1"), "EUR")
+
+            repo.find(GroupId("g1")) shouldBe group.copy(defaultCurrency = "EUR")
+        }
+    }
 })
