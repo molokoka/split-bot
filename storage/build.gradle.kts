@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm") version "2.4.0"
+    `java-library`
 }
 
 repositories {
@@ -13,8 +14,8 @@ val flywayVersion = "13.4.0"
 dependencies {
     implementation(project(":core"))
 
-    implementation("org.jetbrains.exposed:exposed-core:$exposedVersion")
-    implementation("org.jetbrains.exposed:exposed-jdbc:$exposedVersion")
+    api("org.jetbrains.exposed:exposed-core:$exposedVersion")
+    api("org.jetbrains.exposed:exposed-jdbc:$exposedVersion")
     implementation("org.xerial:sqlite-jdbc:3.53.4.0")
     implementation("org.flywaydb:flyway-core:$flywayVersion")
     implementation("org.flywaydb:flyway-database-nc-sqlite:$flywayVersion")
