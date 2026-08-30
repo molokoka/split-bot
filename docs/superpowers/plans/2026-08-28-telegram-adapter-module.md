@@ -1628,8 +1628,8 @@ Append to `telegram/src/test/kotlin/split/telegram/CommandParsingSpec.kt`, insid
 
 ```kotlin
     "parseAddArgs with no currency uses the group default" {
-        parseAddArgs("90 dinner @alice @bob", defaultCurrency = "USD") shouldBe
-            AddExpenseArgs(BigDecimal("90"), "USD", "dinner", listOf("alice", "bob"))
+        parseAddArgs("90 dinner @alice @bobby", defaultCurrency = "USD") shouldBe
+            AddExpenseArgs(BigDecimal("90"), "USD", "dinner", listOf("alice", "bobby"))
     }
 
     "parseAddArgs with an explicit currency overrides the default" {
@@ -1680,16 +1680,16 @@ class AddExpenseCommandSpec : StringSpec({
             val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
 
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100")
+            val groupId = resolver.resolveGroup("-100001")
             resolver.ensureGroupMembership(groupId, aliceId)
-            resolver.resolveMember("2", "bob", "Bob") // Bob has spoken before, so @bob resolves
+            resolver.resolveMember("2", "bobby", "Bob") // Bob has run a command before, so @bobby resolves
 
             val telegramApi = FakeTelegramApi()
             val command = AddExpenseCommand(
                 platformDirectory, groupRepository, memberRepository, expenseRepository, resolver, telegramApi,
             )
 
-            command.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner @bob"))
+            command.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner @bobby"))
 
             val expenses = expenseRepository.listActive(groupId, "USD")
             expenses.single().amount shouldBe BigDecimal("90.00")
@@ -1708,7 +1708,7 @@ class AddExpenseCommandSpec : StringSpec({
             val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
 
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100")
+            val groupId = resolver.resolveGroup("-100001")
 
             val telegramApi = FakeTelegramApi()
             val command = AddExpenseCommand(
@@ -1724,6 +1724,8 @@ class AddExpenseCommandSpec : StringSpec({
     }
 })
 ```
+
+Note: any `@mention` used as test data (not just illustrative message copy) must be 5+ characters after the `@` — `mentionPattern` (Task 5) requires `[a-zA-Z][a-zA-Z0-9_]{4,31}`, matching Telegram's real minimum username length. A 3-4 character placeholder like `@bob` silently fails to match, so `extractMentions` drops it — this surfaced as a real bug during implementation (`parseAddArgs` rejected the command as having zero mentions). Use names like `alice`, `bobby`, `carol` (5+ chars) in any test that round-trips through `extractMentions`/`parseAddArgs`/`parseSettleArgs`. This applies to Task 14's `parseSettleArgs`/`SettleCommandSpec` tests below too.
 
 - [ ] **Step 3: Run tests to verify they fail**
 
@@ -1903,7 +1905,7 @@ class DeleteExpenseCommandSpec : StringSpec({
             val expenseRepository = ExposedExpenseRepository(db)
             val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100")
+            val groupId = resolver.resolveGroup("-100001")
             resolver.ensureGroupMembership(groupId, aliceId)
 
             val expense = Expense(
@@ -1937,7 +1939,7 @@ class DeleteExpenseCommandSpec : StringSpec({
             val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
             val bobId = resolver.resolveMember("2", "bob", "Bob")
-            val groupId = resolver.resolveGroup("-100")
+            val groupId = resolver.resolveGroup("-100001")
             resolver.ensureGroupMembership(groupId, aliceId)
             resolver.ensureGroupMembership(groupId, bobId)
 
@@ -1972,7 +1974,7 @@ class DeleteExpenseCommandSpec : StringSpec({
             val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
             val bobId = resolver.resolveMember("2", "bob", "Bob")
-            val groupId = resolver.resolveGroup("-100")
+            val groupId = resolver.resolveGroup("-100001")
             resolver.ensureGroupMembership(groupId, aliceId)
             resolver.ensureGroupMembership(groupId, bobId)
 
@@ -2006,7 +2008,7 @@ class DeleteExpenseCommandSpec : StringSpec({
             val expenseRepository = ExposedExpenseRepository(db)
             val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100")
+            val groupId = resolver.resolveGroup("-100001")
 
             val telegramApi = FakeTelegramApi()
             val command = DeleteExpenseCommand(groupRepository, expenseRepository, telegramApi)
@@ -2129,7 +2131,7 @@ class ListCommandSpec : StringSpec({
             val expenseRepository = ExposedExpenseRepository(db)
             val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100")
+            val groupId = resolver.resolveGroup("-100001")
 
             fun expense(id: String, at: String) = Expense(
                 id = ExpenseId(id),
@@ -2164,7 +2166,7 @@ class ListCommandSpec : StringSpec({
             val expenseRepository = ExposedExpenseRepository(db)
             val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100")
+            val groupId = resolver.resolveGroup("-100001")
 
             val telegramApi = FakeTelegramApi()
             val command = ListCommand(groupRepository, expenseRepository, telegramApi)
@@ -2266,7 +2268,7 @@ class BalancesCommandSpec : StringSpec({
 
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
             val bobId = resolver.resolveMember("2", "bob", "Bob")
-            val groupId = resolver.resolveGroup("-100")
+            val groupId = resolver.resolveGroup("-100001")
             resolver.ensureGroupMembership(groupId, aliceId)
             resolver.ensureGroupMembership(groupId, bobId)
 
@@ -2302,7 +2304,7 @@ class BalancesCommandSpec : StringSpec({
             val settlementRepository = ExposedSettlementRepository(db)
             val resolver = IdentityResolver(ExposedPlatformDirectory(db), memberRepository, groupRepository)
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100")
+            val groupId = resolver.resolveGroup("-100001")
 
             val telegramApi = FakeTelegramApi()
             val command = BalancesCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, telegramApi)
@@ -2390,7 +2392,7 @@ Append to `telegram/src/test/kotlin/split/telegram/CommandParsingSpec.kt`, insid
 
 ```kotlin
     "parseSettleArgs parses a mention and an amount" {
-        parseSettleArgs("@bob 20") shouldBe SettleArgs("bob", BigDecimal("20"))
+        parseSettleArgs("@bobby 20") shouldBe SettleArgs("bobby", BigDecimal("20"))
     }
 
     "parseSettleArgs rejects zero mentions" {
@@ -2398,7 +2400,7 @@ Append to `telegram/src/test/kotlin/split/telegram/CommandParsingSpec.kt`, insid
     }
 
     "parseSettleArgs rejects more than one mention" {
-        shouldThrow<IllegalArgumentException> { parseSettleArgs("@bob @carol 20") }
+        shouldThrow<IllegalArgumentException> { parseSettleArgs("@bobby @carol 20") }
     }
 ```
 
@@ -2425,13 +2427,13 @@ class SettleCommandSpec : StringSpec({
             val settlementRepository = ExposedSettlementRepository(db)
             val resolver = IdentityResolver(platformDirectory, ExposedMemberRepository(db), ExposedGroupRepository(db))
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            resolver.resolveMember("2", "bob", "Bob")
-            val groupId = resolver.resolveGroup("-100")
+            resolver.resolveMember("2", "bobby", "Bob")
+            val groupId = resolver.resolveGroup("-100001")
 
             val telegramApi = FakeTelegramApi()
             val command = SettleCommand(platformDirectory, settlementRepository, telegramApi)
 
-            command.handle(CommandContext(-100, aliceId, "1", groupId, "@bob 20"))
+            command.handle(CommandContext(-100, aliceId, "1", groupId, "@bobby 20"))
 
             val settlement = settlementRepository.listActive(groupId, "USD").single()
             settlement.fromMemberId shouldBe aliceId
@@ -2446,7 +2448,7 @@ class SettleCommandSpec : StringSpec({
             val settlementRepository = ExposedSettlementRepository(db)
             val resolver = IdentityResolver(platformDirectory, ExposedMemberRepository(db), ExposedGroupRepository(db))
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100")
+            val groupId = resolver.resolveGroup("-100001")
 
             val telegramApi = FakeTelegramApi()
             val command = SettleCommand(platformDirectory, settlementRepository, telegramApi)
@@ -2605,7 +2607,7 @@ class SettleSuggestCommandSpec : StringSpec({
 
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
             val bobId = resolver.resolveMember("2", "bob", "Bob")
-            val groupId = resolver.resolveGroup("-100")
+            val groupId = resolver.resolveGroup("-100001")
             resolver.ensureGroupMembership(groupId, aliceId)
             resolver.ensureGroupMembership(groupId, bobId)
 
@@ -2641,7 +2643,7 @@ class SettleSuggestCommandSpec : StringSpec({
             val settlementRepository = ExposedSettlementRepository(db)
             val resolver = IdentityResolver(ExposedPlatformDirectory(db), memberRepository, groupRepository)
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100")
+            val groupId = resolver.resolveGroup("-100001")
 
             val telegramApi = FakeTelegramApi()
             val command = SettleSuggestCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, telegramApi)

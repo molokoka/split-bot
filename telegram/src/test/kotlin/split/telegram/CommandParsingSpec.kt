@@ -1,7 +1,9 @@
 package split.telegram
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import java.math.BigDecimal
 
 class CommandParsingSpec : StringSpec({
 
@@ -27,5 +29,24 @@ class CommandParsingSpec : StringSpec({
 
     "returns no mentions when there are none" {
         extractMentions("just a plain description") shouldBe emptyList()
+    }
+
+    "parseAddArgs with no currency uses the group default" {
+        parseAddArgs("90 dinner @alice @bobby", defaultCurrency = "USD") shouldBe
+            AddExpenseArgs(BigDecimal("90"), "USD", "dinner", listOf("alice", "bobby"))
+    }
+
+    "parseAddArgs with an explicit currency overrides the default" {
+        parseAddArgs("90 EUR dinner @alice", defaultCurrency = "USD") shouldBe
+            AddExpenseArgs(BigDecimal("90"), "EUR", "dinner", listOf("alice"))
+    }
+
+    "parseAddArgs keeps a multi-word description that isn't a currency code" {
+        parseAddArgs("90 Fancy Dinner Party @alice", defaultCurrency = "USD") shouldBe
+            AddExpenseArgs(BigDecimal("90"), "USD", "Fancy Dinner Party", listOf("alice"))
+    }
+
+    "parseAddArgs rejects no mentions" {
+        shouldThrow<IllegalArgumentException> { parseAddArgs("90 dinner", defaultCurrency = "USD") }
     }
 })
