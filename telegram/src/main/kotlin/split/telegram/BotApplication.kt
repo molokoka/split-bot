@@ -54,7 +54,7 @@ suspend fun main() {
             platformDirectory, groupRepository, memberRepository, expenseRepository, identityResolver, telegramApi,
         )::handle,
         "delete" to DeleteExpenseCommand(groupRepository, expenseRepository, telegramApi)::handle,
-        "list" to ListCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)::handle,
+        "expenses" to ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)::handle,
         "balances" to BalancesCommand(
             groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi,
         )::handle,
@@ -62,6 +62,7 @@ suspend fun main() {
         "settle_suggest" to SettleSuggestCommand(
             groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi,
         )::handle,
+        "settlements" to SettlementsCommand(groupRepository, memberRepository, settlementRepository, platformDirectory, telegramApi)::handle,
     )
 
     val router = CommandRouter(identityResolver, handlers)

@@ -131,7 +131,7 @@ class DeleteExpenseCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, "zzzzzzzz"))
 
-            telegramApi.sentMessages shouldBe listOf(-100L to "No active expense found matching \"zzzzzzzz\" — check /list.")
+            telegramApi.sentMessages shouldBe listOf(-100L to "No active expense found matching \"zzzzzzzz\" — check /expenses.")
         }
     }
 })

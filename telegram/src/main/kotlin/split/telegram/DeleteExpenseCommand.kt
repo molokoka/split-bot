@@ -15,7 +15,7 @@ class DeleteExpenseCommand(
     suspend fun handle(context: CommandContext) {
         val idPrefix = context.args.trim()
         if (idPrefix.isEmpty()) {
-            telegramApi.sendMessage(context.chatId, "Usage: /delete <code>id</code> (see /list for ids)")
+            telegramApi.sendMessage(context.chatId, "Usage: /delete <code>id</code> (see /expenses for ids)")
             return
         }
 
@@ -24,7 +24,7 @@ class DeleteExpenseCommand(
             .firstOrNull { it.id.value.startsWith(idPrefix, ignoreCase = true) }
 
         if (expense == null) {
-            telegramApi.sendMessage(context.chatId, "No active expense found matching \"${escapeHtml(idPrefix)}\" — check /list.")
+            telegramApi.sendMessage(context.chatId, "No active expense found matching \"${escapeHtml(idPrefix)}\" — check /expenses.")
             return
         }
 

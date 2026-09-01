@@ -12,6 +12,8 @@ import split.core.ExpenseShare
 import split.core.GroupId
 import split.core.Member
 import split.core.MemberId
+import split.core.Settlement
+import split.core.SettlementId
 import split.core.SplitType
 
 class MessageFormattingSpec : StringSpec({
@@ -143,23 +145,15 @@ class MessageFormattingSpec : StringSpec({
                 RichBlockTable(
                     cells = listOf(
                         listOf(
-                            RichBlockTableCell("ID", isHeader = true),
-                            RichBlockTableCell("Date", isHeader = true),
-                            RichBlockTableCell("Description", isHeader = true),
-                            RichBlockTableCell("Amount", isHeader = true),
-                            RichBlockTableCell("Paid by", isHeader = true),
+                            RichBlockTableCell("Expense", isHeader = true),
                             RichBlockTableCell("Split", isHeader = true),
                         ),
                         listOf(
-                            RichBlockTableCell("abcdef12"),
-                            RichBlockTableCell("2026-08-28"),
-                            RichBlockTableCell("dinner"),
-                            RichBlockTableCell("90.00 USD"),
-                            RichBlockTableCell("Alice"),
-                            RichBlockTableCell("equally: Alice 45.00 USD, Bob 45.00 USD"),
+                            RichBlockTableCell("dinner\n90.00 USD · paid by Alice\nabcdef12 · 2026-08-28"),
+                            RichBlockTableCell("equally:\nAlice 45.00 USD\nBob 45.00 USD"),
                         ),
                     ),
-                    caption = "Last 10 expenses",
+                    caption = "Last 10 expenses:",
                 ),
             ),
         )
@@ -183,7 +177,8 @@ class MessageFormattingSpec : StringSpec({
         val row = (message.blocks.single() as RichBlockTable).cells[1]
 
         row.map { it.text } shouldBe listOf(
-            "abcdef12", "2026-08-28", "rent", "90.00 USD", "Alice", "by exact amounts: Alice 50.00 USD, Bob 40.00 USD",
+            "rent\n90.00 USD · paid by Alice\nabcdef12 · 2026-08-28",
+            "by exact amounts:\nAlice 50.00 USD\nBob 40.00 USD",
         )
     }
 
@@ -205,13 +200,72 @@ class MessageFormattingSpec : StringSpec({
         val row = (message.blocks.single() as RichBlockTable).cells[1]
 
         row.map { it.text } shouldBe listOf(
-            "abcdef12", "2026-08-28", "groceries", "90.00 USD", "Alice", "by shares: Alice 60.00 USD, Bob 30.00 USD",
+            "groceries\n90.00 USD · paid by Alice\nabcdef12 · 2026-08-28",
+            "by shares:\nAlice 60.00 USD\nBob 30.00 USD",
         )
     }
 
     "buildExpenseListMessage explains there's nothing yet" {
         buildExpenseListMessage(emptyList(), members) shouldBe
             InputRichMessage(blocks = listOf(RichBlockParagraph("No expenses yet — use /add to log one.")))
+    }
+
+    "buildSettlementListMessage shows the date, payer, payee, and amount of each settlement" {
+        val settlement = Settlement(
+            id = SettlementId("s1"),
+            groupId = GroupId("g1"),
+            currency = "USD",
+            fromMemberId = bob.id,
+            toMemberId = alice.id,
+            amount = BigDecimal("30.00"),
+            createdBy = bob.id,
+            createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+        )
+
+        buildSettlementListMessage(listOf(settlement), members) shouldBe InputRichMessage(
+            blocks = listOf(
+                RichBlockTable(
+                    cells = listOf(
+                        listOf(
+                            RichBlockTableCell("Date", isHeader = true),
+                            RichBlockTableCell("From", isHeader = true),
+                            RichBlockTableCell("To", isHeader = true),
+                            RichBlockTableCell("Amount", isHeader = true),
+                        ),
+                        listOf(
+                            RichBlockTableCell("2026-08-28"),
+                            RichBlockTableCell("Bob"),
+                            RichBlockTableCell("Alice"),
+                            RichBlockTableCell("30.00 USD"),
+                        ),
+                    ),
+                    caption = "Last 10 settlements:",
+                ),
+            ),
+        )
+    }
+
+    "buildSettlementListMessage names members by @username once known" {
+        val settlement = Settlement(
+            id = SettlementId("s1"),
+            groupId = GroupId("g1"),
+            currency = "USD",
+            fromMemberId = bob.id,
+            toMemberId = alice.id,
+            amount = BigDecimal("30.00"),
+            createdBy = bob.id,
+            createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+        )
+
+        val row = (buildSettlementListMessage(listOf(settlement), members, usernames = mapOf(bob.id to "bobby")).blocks.single() as RichBlockTable)
+            .cells[1]
+
+        row.map { it.text } shouldBe listOf("2026-08-28", "@bobby", "Alice", "30.00 USD")
+    }
+
+    "buildSettlementListMessage explains there's nothing yet" {
+        buildSettlementListMessage(emptyList(), members) shouldBe
+            InputRichMessage(blocks = listOf(RichBlockParagraph("No settlements recorded yet — use /settle to log one.")))
     }
 
     "formatBalances phrases payments relative to the viewer" {

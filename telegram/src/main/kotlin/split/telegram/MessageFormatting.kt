@@ -4,6 +4,7 @@ import split.core.DebtPayment
 import split.core.Expense
 import split.core.Member
 import split.core.MemberId
+import split.core.Settlement
 import split.core.SplitType
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -68,16 +69,16 @@ fun buildExpenseListMessage(expenses: List<Expense>, members: List<Member>, user
         return InputRichMessage(blocks = listOf(RichBlockParagraph("No expenses yet — use /add to log one.")))
     }
 
-    val header = listOf("ID", "Date", "Description", "Amount", "Paid by", "Split").map {
+    val header = listOf("Expense", "Split").map {
         RichBlockTableCell(text = it, isHeader = true)
     }
     val rows = expenses.map { expenseRow(it, members, usernames) }
     return InputRichMessage(
-        blocks = listOf(RichBlockTable(cells = listOf(header) + rows, caption = "Last 10 expenses")),
+        blocks = listOf(RichBlockTable(cells = listOf(header) + rows, caption = "Last 10 expenses:")),
     )
 }
 
-// Deliberately its own format rather than reusing formatExpenseConfirmation: /list is an
+// Deliberately its own format rather than reusing formatExpenseConfirmation: /expenses is an
 // audit view, so unlike the brief /add confirmation it needs the date and, critically,
 // each person's actual share amount — for an EQUAL split that's implied (everyone pays the
 // same), but that's the whole point of EXACT/SHARES splits: amounts differ per person, and
@@ -89,18 +90,14 @@ private fun expenseRow(expense: Expense, members: List<Member>, usernames: Map<M
     val payerName = plainName(nameOf.getValue(expense.payerId), usernames)
     val breakdown = expense.shares
         .sortedBy { nameOf.getValue(it.memberId).displayName }
-        .joinToString(", ") { share ->
+        .joinToString("\n") { share ->
             "${plainName(nameOf.getValue(share.memberId), usernames)} ${formatAmount(share.shareAmount, expense.currency)}"
         }
 
-    return listOf(
-        shortId,
-        date,
-        expense.description,
-        formatAmount(expense.amount, expense.currency),
-        payerName,
-        "${splitTypeLabel(expense.splitType)}: $breakdown",
-    ).map { RichBlockTableCell(text = it) }
+    val summary = "${expense.description}\n${formatAmount(expense.amount, expense.currency)} · paid by $payerName\n" +
+        "$shortId · $date"
+
+    return listOf(summary, "${splitTypeLabel(expense.splitType)}:\n$breakdown").map { RichBlockTableCell(text = it) }
 }
 
 // Same @username-or-display-name preference as mentionName, but without HTML escaping: rich
@@ -108,6 +105,33 @@ private fun expenseRow(expense: Expense, members: List<Member>, usernames: Map<M
 // here would show a literal "&amp;" instead of "&" for a name like "Bob & Sons".
 private fun plainName(member: Member, usernames: Map<MemberId, String>): String =
     usernames[member.id]?.let { "@$it" } ?: member.displayName
+
+fun buildSettlementListMessage(
+    settlements: List<Settlement>,
+    members: List<Member>,
+    usernames: Map<MemberId, String> = emptyMap(),
+): InputRichMessage {
+    if (settlements.isEmpty()) {
+        return InputRichMessage(blocks = listOf(RichBlockParagraph("No settlements recorded yet — use /settle to log one.")))
+    }
+
+    val header = listOf("Date", "From", "To", "Amount").map {
+        RichBlockTableCell(text = it, isHeader = true)
+    }
+    val rows = settlements.map { settlementRow(it, members, usernames) }
+    return InputRichMessage(
+        blocks = listOf(RichBlockTable(cells = listOf(header) + rows, caption = "Last 10 settlements:")),
+    )
+}
+
+private fun settlementRow(settlement: Settlement, members: List<Member>, usernames: Map<MemberId, String>): List<RichBlockTableCell> {
+    val nameOf = members.associateBy { it.id }
+    val date = settlement.createdAt.toString().take(10)
+    val from = plainName(nameOf.getValue(settlement.fromMemberId), usernames)
+    val to = plainName(nameOf.getValue(settlement.toMemberId), usernames)
+
+    return listOf(date, from, to, formatAmount(settlement.amount, settlement.currency)).map { RichBlockTableCell(text = it) }
+}
 
 fun formatBalances(
     payments: List<DebtPayment>,

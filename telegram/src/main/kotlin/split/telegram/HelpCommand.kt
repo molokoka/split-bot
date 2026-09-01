@@ -15,10 +15,11 @@ internal const val HELP_TEXT = """Commands:
 /members — list who I recognize in this group
 /currency <code>currency</code> — set this group's default currency
 /balances — see who owes you and who you owe
-/list — last 10 expenses
+/expenses — last 10 expenses
 /delete <code>id</code> — remove an expense (payer or admin only)
 /settle <code>@person</code> <code>amount</code> — record that you paid them
 /settle_suggest — minimal set of payments to settle the group up
+/settlements — last 10 recorded settlements
 /help — this message"""
 
 class HelpCommand(private val telegramApi: TelegramApi) {
