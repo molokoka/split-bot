@@ -56,3 +56,37 @@ data class SendMessageRequest(
     // encodeDefaults is set, and this one must always be sent.
     @SerialName("parse_mode") val parseMode: String,
 )
+
+// Telegram Bot API 10.1+ "Rich Messages" (sendRichMessage). Unlike sendMessage's parse_mode
+// HTML, block text here is literal — Telegram doesn't interpret markup inside it — so callers
+// don't escape their strings before putting them in a block.
+@Serializable
+sealed interface RichBlock
+
+@Serializable
+@SerialName("paragraph")
+data class RichBlockParagraph(val text: String) : RichBlock
+
+@Serializable
+@SerialName("table")
+data class RichBlockTable(
+    val cells: List<List<RichBlockTableCell>>,
+    val caption: String? = null,
+) : RichBlock
+
+@Serializable
+data class RichBlockTableCell(
+    val text: String,
+    @SerialName("is_header") val isHeader: Boolean? = null,
+)
+
+@Serializable
+data class InputRichMessage(
+    val blocks: List<RichBlock>,
+)
+
+@Serializable
+data class SendRichMessageRequest(
+    @SerialName("chat_id") val chatId: Long,
+    @SerialName("rich_message") val richMessage: InputRichMessage,
+)

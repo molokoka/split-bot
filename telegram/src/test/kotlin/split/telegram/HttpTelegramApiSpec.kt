@@ -24,7 +24,7 @@ class HttpTelegramApiSpec : StringSpec({
             )
         }
         val client = HttpClient(engine) {
-            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; classDiscriminator = "type" }) }
         }
         return client to requests
     }
@@ -69,6 +69,27 @@ class HttpTelegramApiSpec : StringSpec({
         api.sendMessage(chatId = -100, text = "hi")
 
         requests.single().body.toByteArray().decodeToString() shouldBe """{"chat_id":-100,"text":"hi","parse_mode":"HTML"}"""
+    }
+
+    "sendRichMessage posts chat_id and rich_message as JSON" {
+        val (httpClient, requests) = clientReturning("""{"ok":true}""")
+        val api = HttpTelegramApi(botToken = "tok", httpClient = httpClient)
+
+        api.sendRichMessage(
+            chatId = -100,
+            richMessage = InputRichMessage(
+                blocks = listOf(
+                    RichBlockTable(
+                        cells = listOf(listOf(RichBlockTableCell("ID", isHeader = true)), listOf(RichBlockTableCell("e1"))),
+                        caption = "Last 10 expenses",
+                    ),
+                ),
+            ),
+        )
+
+        requests.single().body.toByteArray().decodeToString() shouldBe
+            """{"chat_id":-100,"rich_message":{"blocks":[{"type":"table","cells":[[{"text":"ID","is_header":true}],[{"text":"e1"}]],""" +
+            """"caption":"Last 10 expenses"}]}}"""
     }
 
     "getChatAdministrators parses the response" {

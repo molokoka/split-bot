@@ -63,14 +63,18 @@ private fun splitTypeLabel(splitType: SplitType): String = when (splitType) {
     SplitType.SHARES -> "by shares"
 }
 
-fun formatExpenseList(expenses: List<Expense>, members: List<Member>, usernames: Map<MemberId, String> = emptyMap()): String {
-    if (expenses.isEmpty()) return "No expenses yet — use /add to log one."
-    // Blank line between entries, since a wall of unbroken lines is hard to scan in Telegram.
-    // Header names the 10-expense cap ListCommand applies, so it's not a mystery why an
-    // older expense might be missing from the list. Plain text, not bold — a bold title
-    // read as more visually important than the bold expense descriptions right below it.
-    return "Last 10 expenses:\n\n" +
-        expenses.joinToString("\n\n") { formatExpenseListLine(it, members, usernames) }
+fun buildExpenseListMessage(expenses: List<Expense>, members: List<Member>, usernames: Map<MemberId, String> = emptyMap()): InputRichMessage {
+    if (expenses.isEmpty()) {
+        return InputRichMessage(blocks = listOf(RichBlockParagraph("No expenses yet — use /add to log one.")))
+    }
+
+    val header = listOf("ID", "Date", "Description", "Amount", "Paid by", "Split").map {
+        RichBlockTableCell(text = it, isHeader = true)
+    }
+    val rows = expenses.map { expenseRow(it, members, usernames) }
+    return InputRichMessage(
+        blocks = listOf(RichBlockTable(cells = listOf(header) + rows, caption = "Last 10 expenses")),
+    )
 }
 
 // Deliberately its own format rather than reusing formatExpenseConfirmation: /list is an
@@ -78,21 +82,32 @@ fun formatExpenseList(expenses: List<Expense>, members: List<Member>, usernames:
 // each person's actual share amount — for an EQUAL split that's implied (everyone pays the
 // same), but that's the whole point of EXACT/SHARES splits: amounts differ per person, and
 // naming the split type without the breakdown wouldn't say how much anyone actually owes.
-private fun formatExpenseListLine(expense: Expense, members: List<Member>, usernames: Map<MemberId, String>): String {
+private fun expenseRow(expense: Expense, members: List<Member>, usernames: Map<MemberId, String>): List<RichBlockTableCell> {
     val nameOf = members.associateBy { it.id }
     val shortId = expense.id.value.take(8)
     val date = expense.createdAt.toString().take(10)
-    val payerName = mentionName(nameOf.getValue(expense.payerId), usernames)
+    val payerName = plainName(nameOf.getValue(expense.payerId), usernames)
     val breakdown = expense.shares
         .sortedBy { nameOf.getValue(it.memberId).displayName }
         .joinToString(", ") { share ->
-            "${mentionName(nameOf.getValue(share.memberId), usernames)} ${formatAmount(share.shareAmount, expense.currency)}"
+            "${plainName(nameOf.getValue(share.memberId), usernames)} ${formatAmount(share.shareAmount, expense.currency)}"
         }
 
-    return "<code>$shortId</code>  $date  <b>${escapeHtml(expense.description)}</b>  " +
-        "${formatAmount(expense.amount, expense.currency)}\n" +
-        "paid by $payerName, split ${splitTypeLabel(expense.splitType)}: $breakdown"
+    return listOf(
+        shortId,
+        date,
+        expense.description,
+        formatAmount(expense.amount, expense.currency),
+        payerName,
+        "${splitTypeLabel(expense.splitType)}: $breakdown",
+    ).map { RichBlockTableCell(text = it) }
 }
+
+// Same @username-or-display-name preference as mentionName, but without HTML escaping: rich
+// message block text is literal, unlike the parse_mode HTML used by sendMessage, so escaping
+// here would show a literal "&amp;" instead of "&" for a name like "Bob & Sons".
+private fun plainName(member: Member, usernames: Map<MemberId, String>): String =
+    usernames[member.id]?.let { "@$it" } ?: member.displayName
 
 fun formatBalances(
     payments: List<DebtPayment>,

@@ -124,7 +124,7 @@ class MessageFormattingSpec : StringSpec({
         shouldThrow<NoSuchElementException> { formatExpenseConfirmation(expense, members) }
     }
 
-    "formatExpenseList shows a short id, date, and per-person share breakdown for an equal split" {
+    "buildExpenseListMessage shows a short id, date, and per-person share breakdown for an equal split" {
         val expense = Expense(
             id = ExpenseId("abcdef1234567890"),
             groupId = GroupId("g1"),
@@ -138,13 +138,34 @@ class MessageFormattingSpec : StringSpec({
             shares = listOf(ExpenseShare(alice.id, BigDecimal("45.00")), ExpenseShare(bob.id, BigDecimal("45.00"))),
         )
 
-        formatExpenseList(listOf(expense), members) shouldBe
-            "Last 10 expenses:\n\n" +
-            "<code>abcdef12</code>  2026-08-28  <b>dinner</b>  90.00 USD\n" +
-            "paid by Alice, split equally: Alice 45.00 USD, Bob 45.00 USD"
+        buildExpenseListMessage(listOf(expense), members) shouldBe InputRichMessage(
+            blocks = listOf(
+                RichBlockTable(
+                    cells = listOf(
+                        listOf(
+                            RichBlockTableCell("ID", isHeader = true),
+                            RichBlockTableCell("Date", isHeader = true),
+                            RichBlockTableCell("Description", isHeader = true),
+                            RichBlockTableCell("Amount", isHeader = true),
+                            RichBlockTableCell("Paid by", isHeader = true),
+                            RichBlockTableCell("Split", isHeader = true),
+                        ),
+                        listOf(
+                            RichBlockTableCell("abcdef12"),
+                            RichBlockTableCell("2026-08-28"),
+                            RichBlockTableCell("dinner"),
+                            RichBlockTableCell("90.00 USD"),
+                            RichBlockTableCell("Alice"),
+                            RichBlockTableCell("equally: Alice 45.00 USD, Bob 45.00 USD"),
+                        ),
+                    ),
+                    caption = "Last 10 expenses",
+                ),
+            ),
+        )
     }
 
-    "formatExpenseList shows the real per-person amounts for an exact split, not an equal guess" {
+    "buildExpenseListMessage shows the real per-person amounts for an exact split, not an equal guess" {
         val expense = Expense(
             id = ExpenseId("abcdef1234567890"),
             groupId = GroupId("g1"),
@@ -158,13 +179,15 @@ class MessageFormattingSpec : StringSpec({
             shares = listOf(ExpenseShare(alice.id, BigDecimal("50.00")), ExpenseShare(bob.id, BigDecimal("40.00"))),
         )
 
-        formatExpenseList(listOf(expense), members) shouldBe
-            "Last 10 expenses:\n\n" +
-            "<code>abcdef12</code>  2026-08-28  <b>rent</b>  90.00 USD\n" +
-            "paid by Alice, split by exact amounts: Alice 50.00 USD, Bob 40.00 USD"
+        val message = buildExpenseListMessage(listOf(expense), members)
+        val row = (message.blocks.single() as RichBlockTable).cells[1]
+
+        row.map { it.text } shouldBe listOf(
+            "abcdef12", "2026-08-28", "rent", "90.00 USD", "Alice", "by exact amounts: Alice 50.00 USD, Bob 40.00 USD",
+        )
     }
 
-    "formatExpenseList shows the real per-person amounts for a shares split" {
+    "buildExpenseListMessage shows the real per-person amounts for a shares split" {
         val expense = Expense(
             id = ExpenseId("abcdef1234567890"),
             groupId = GroupId("g1"),
@@ -178,14 +201,17 @@ class MessageFormattingSpec : StringSpec({
             shares = listOf(ExpenseShare(alice.id, BigDecimal("60.00")), ExpenseShare(bob.id, BigDecimal("30.00"))),
         )
 
-        formatExpenseList(listOf(expense), members) shouldBe
-            "Last 10 expenses:\n\n" +
-            "<code>abcdef12</code>  2026-08-28  <b>groceries</b>  90.00 USD\n" +
-            "paid by Alice, split by shares: Alice 60.00 USD, Bob 30.00 USD"
+        val message = buildExpenseListMessage(listOf(expense), members)
+        val row = (message.blocks.single() as RichBlockTable).cells[1]
+
+        row.map { it.text } shouldBe listOf(
+            "abcdef12", "2026-08-28", "groceries", "90.00 USD", "Alice", "by shares: Alice 60.00 USD, Bob 30.00 USD",
+        )
     }
 
-    "formatExpenseList explains there's nothing yet" {
-        formatExpenseList(emptyList(), members) shouldBe "No expenses yet — use /add to log one."
+    "buildExpenseListMessage explains there's nothing yet" {
+        buildExpenseListMessage(emptyList(), members) shouldBe
+            InputRichMessage(blocks = listOf(RichBlockParagraph("No expenses yet — use /add to log one.")))
     }
 
     "formatBalances phrases payments relative to the viewer" {

@@ -15,7 +15,7 @@ class HttpTelegramApi(
     private val baseUrl: String = "https://api.telegram.org",
     private val httpClient: HttpClient = HttpClient(CIO) {
         install(ContentNegotiation) {
-            json(Json { ignoreUnknownKeys = true })
+            json(Json { ignoreUnknownKeys = true; classDiscriminator = "type" })
         }
         install(HttpTimeout) {
             requestTimeoutMillis = 30_000
@@ -40,6 +40,13 @@ class HttpTelegramApi(
         httpClient.post("$baseUrl/bot$botToken/sendMessage") {
             contentType(ContentType.Application.Json)
             setBody(SendMessageRequest(chatId, text, parseMode = "HTML"))
+        }
+    }
+
+    override suspend fun sendRichMessage(chatId: Long, richMessage: InputRichMessage) {
+        httpClient.post("$baseUrl/bot$botToken/sendRichMessage") {
+            contentType(ContentType.Application.Json)
+            setBody(SendRichMessageRequest(chatId, richMessage))
         }
     }
 

@@ -20,6 +20,6 @@ class ListCommand(
         val members = memberRepository.findByGroup(context.groupId)
         val usernames = platformDirectory.findUsernames(IdentityResolver.PLATFORM, members.map { it.id })
 
-        telegramApi.sendMessage(context.chatId, formatExpenseList(expenses, members, usernames))
+        telegramApi.sendRichMessage(context.chatId, buildExpenseListMessage(expenses, members, usernames))
     }
 }

@@ -64,12 +64,40 @@ class ListCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(
-                -100L to "Last 10 expenses:\n\n" +
-                    "<code>newer123</code>  2026-08-28  <b>dinner</b>  20.00 USD\n" +
-                    "paid by @bobby, split equally: @alice 10.00 USD, @bobby 10.00 USD\n\n" +
-                    "<code>older123</code>  2026-08-27  <b>lunch</b>  10.00 USD\n" +
-                    "paid by @alice, split equally: @alice 10.00 USD",
+            telegramApi.sentRichMessages shouldBe listOf(
+                -100L to InputRichMessage(
+                    blocks = listOf(
+                        RichBlockTable(
+                            cells = listOf(
+                                listOf(
+                                    RichBlockTableCell("ID", isHeader = true),
+                                    RichBlockTableCell("Date", isHeader = true),
+                                    RichBlockTableCell("Description", isHeader = true),
+                                    RichBlockTableCell("Amount", isHeader = true),
+                                    RichBlockTableCell("Paid by", isHeader = true),
+                                    RichBlockTableCell("Split", isHeader = true),
+                                ),
+                                listOf(
+                                    RichBlockTableCell("newer123"),
+                                    RichBlockTableCell("2026-08-28"),
+                                    RichBlockTableCell("dinner"),
+                                    RichBlockTableCell("20.00 USD"),
+                                    RichBlockTableCell("@bobby"),
+                                    RichBlockTableCell("equally: @alice 10.00 USD, @bobby 10.00 USD"),
+                                ),
+                                listOf(
+                                    RichBlockTableCell("older123"),
+                                    RichBlockTableCell("2026-08-27"),
+                                    RichBlockTableCell("lunch"),
+                                    RichBlockTableCell("10.00 USD"),
+                                    RichBlockTableCell("@alice"),
+                                    RichBlockTableCell("equally: @alice 10.00 USD"),
+                                ),
+                            ),
+                            caption = "Last 10 expenses",
+                        ),
+                    ),
+                ),
             )
         }
     }
@@ -121,17 +149,15 @@ class ListCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(
-                -100L to "Last 10 expenses:\n\n" +
-                    "<code>bbbb1234</code>  2026-08-29  <b>utilities</b>  90.00 USD\n" +
-                    "paid by @bobby, split by shares: @alice 30.00 USD, @bobby 60.00 USD\n\n" +
-                    "<code>aaaa1234</code>  2026-08-28  <b>rent</b>  100.00 USD\n" +
-                    "paid by @alice, split by exact amounts: @alice 60.00 USD, @bobby 40.00 USD",
+            val rows = (telegramApi.sentRichMessages.single().second.blocks.single() as RichBlockTable).cells.drop(1)
+            rows.map { row -> row.map { it.text } } shouldBe listOf(
+                listOf("bbbb1234", "2026-08-29", "utilities", "90.00 USD", "@bobby", "by shares: @alice 30.00 USD, @bobby 60.00 USD"),
+                listOf("aaaa1234", "2026-08-28", "rent", "100.00 USD", "@alice", "by exact amounts: @alice 60.00 USD, @bobby 40.00 USD"),
             )
         }
     }
 
-    "falls back to the escaped display name for a member with no known username" {
+    "falls back to the display name for a member with no known username" {
         withTestDatabase { db ->
             val platformDirectory = ExposedPlatformDirectory(db)
             val groupRepository = ExposedGroupRepository(db)
@@ -162,11 +188,8 @@ class ListCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(
-                -100L to "Last 10 expenses:\n\n" +
-                    "<code>aaaa1234</code>  2026-08-28  <b>coffee</b>  5.00 USD\n" +
-                    "paid by Alice, split equally: Alice 5.00 USD",
-            )
+            val row = (telegramApi.sentRichMessages.single().second.blocks.single() as RichBlockTable).cells[1]
+            row.map { it.text } shouldBe listOf("aaaa1234", "2026-08-28", "coffee", "5.00 USD", "Alice", "equally: Alice 5.00 USD")
         }
     }
 
@@ -185,7 +208,9 @@ class ListCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(-100L to "No expenses yet — use /add to log one.")
+            telegramApi.sentRichMessages shouldBe listOf(
+                -100L to InputRichMessage(blocks = listOf(RichBlockParagraph("No expenses yet — use /add to log one."))),
+            )
         }
     }
 })
