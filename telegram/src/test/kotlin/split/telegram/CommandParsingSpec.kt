@@ -49,4 +49,16 @@ class CommandParsingSpec : StringSpec({
     "parseAddArgs rejects no mentions" {
         shouldThrow<IllegalArgumentException> { parseAddArgs("90 dinner", defaultCurrency = "USD") }
     }
+
+    "parseSettleArgs parses a mention and an amount" {
+        parseSettleArgs("@bobby 20") shouldBe SettleArgs("bobby", BigDecimal("20"))
+    }
+
+    "parseSettleArgs rejects zero mentions" {
+        shouldThrow<IllegalArgumentException> { parseSettleArgs("20") }
+    }
+
+    "parseSettleArgs rejects more than one mention" {
+        shouldThrow<IllegalArgumentException> { parseSettleArgs("@bobby @carol 20") }
+    }
 })

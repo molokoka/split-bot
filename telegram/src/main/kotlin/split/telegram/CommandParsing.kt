@@ -43,3 +43,13 @@ fun parseAddArgs(args: String, defaultCurrency: String): AddExpenseArgs {
         AddExpenseArgs(amount, defaultCurrency, rest, mentions)
     }
 }
+
+data class SettleArgs(val counterpartyUsername: String, val amount: BigDecimal)
+
+fun parseSettleArgs(args: String): SettleArgs {
+    val mentions = extractMentions(args)
+    require(mentions.size == 1) { "Usage: /settle @person <amount>" }
+    val withoutMention = mentionPattern.replace(args, "").trim()
+    require(withoutMention.isNotEmpty()) { "Usage: /settle @person <amount>" }
+    return SettleArgs(mentions[0], BigDecimal(withoutMention))
+}

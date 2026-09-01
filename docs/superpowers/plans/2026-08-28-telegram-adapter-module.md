@@ -2383,8 +2383,8 @@ git commit -m "Add /balances command"
 - Test: `telegram/src/test/kotlin/split/telegram/SettleCommandSpec.kt`
 
 **Interfaces:**
-- Consumes: `PlatformDirectory`, `SettlementRepository`, `createSettlement` (`core`); `extractMentions` (Task 5).
-- Produces: `data class SettleArgs(counterpartyUsername: String, amount: BigDecimal)`, `fun parseSettleArgs(args: String): SettleArgs`, `class SettleCommand(platformDirectory: PlatformDirectory, settlementRepository: SettlementRepository, telegramApi: TelegramApi) { suspend fun handle(context: CommandContext) }`.
+- Consumes: `PlatformDirectory`, `GroupRepository`, `SettlementRepository`, `createSettlement` (`core`); `extractMentions` (Task 5).
+- Produces: `data class SettleArgs(counterpartyUsername: String, amount: BigDecimal)`, `fun parseSettleArgs(args: String): SettleArgs`, `class SettleCommand(platformDirectory: PlatformDirectory, groupRepository: GroupRepository, settlementRepository: SettlementRepository, telegramApi: TelegramApi) { suspend fun handle(context: CommandContext) }`.
 
 - [ ] **Step 1: Write the failing parsing tests**
 
@@ -2424,14 +2424,15 @@ class SettleCommandSpec : StringSpec({
     "records a settlement between the sender and the mentioned member" {
         withTestDatabase { db ->
             val platformDirectory = ExposedPlatformDirectory(db)
+            val groupRepository = ExposedGroupRepository(db)
             val settlementRepository = ExposedSettlementRepository(db)
-            val resolver = IdentityResolver(platformDirectory, ExposedMemberRepository(db), ExposedGroupRepository(db))
+            val resolver = IdentityResolver(platformDirectory, ExposedMemberRepository(db), groupRepository)
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
             resolver.resolveMember("2", "bobby", "Bob")
             val groupId = resolver.resolveGroup("-100001")
 
             val telegramApi = FakeTelegramApi()
-            val command = SettleCommand(platformDirectory, settlementRepository, telegramApi)
+            val command = SettleCommand(platformDirectory, groupRepository, settlementRepository, telegramApi)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, "@bobby 20"))
 
@@ -2442,16 +2443,41 @@ class SettleCommandSpec : StringSpec({
         }
     }
 
+    "records the settlement under the group's currency, not a hardcoded one" {
+        withTestDatabase { db ->
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val groupRepository = ExposedGroupRepository(db)
+            val settlementRepository = ExposedSettlementRepository(db)
+            val resolver = IdentityResolver(platformDirectory, ExposedMemberRepository(db), groupRepository)
+            val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            resolver.resolveMember("2", "bobby", "Bob")
+            val groupId = resolver.resolveGroup("-100001")
+            groupRepository.updateCurrency(groupId, "EUR")
+
+            val telegramApi = FakeTelegramApi()
+            val command = SettleCommand(platformDirectory, groupRepository, settlementRepository, telegramApi)
+
+            command.handle(CommandContext(-100, aliceId, "1", groupId, "@bobby 20"))
+
+            // if this were hardcoded to USD, listActive(groupId, "EUR") would come back empty
+            // even though a settlement was created — exactly the bug this test guards against.
+            val settlement = settlementRepository.listActive(groupId, "EUR").single()
+            settlement.currency shouldBe "EUR"
+            telegramApi.sentMessages.single().second shouldBe "Recorded: you paid 20.00 EUR."
+        }
+    }
+
     "replies when the mentioned person isn't recognized" {
         withTestDatabase { db ->
             val platformDirectory = ExposedPlatformDirectory(db)
+            val groupRepository = ExposedGroupRepository(db)
             val settlementRepository = ExposedSettlementRepository(db)
-            val resolver = IdentityResolver(platformDirectory, ExposedMemberRepository(db), ExposedGroupRepository(db))
+            val resolver = IdentityResolver(platformDirectory, ExposedMemberRepository(db), groupRepository)
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
             val groupId = resolver.resolveGroup("-100001")
 
             val telegramApi = FakeTelegramApi()
-            val command = SettleCommand(platformDirectory, settlementRepository, telegramApi)
+            val command = SettleCommand(platformDirectory, groupRepository, settlementRepository, telegramApi)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, "@stranger 20"))
 
@@ -2491,6 +2517,7 @@ Create `telegram/src/main/kotlin/split/telegram/SettleCommand.kt`:
 ```kotlin
 package split.telegram
 
+import split.core.GroupRepository
 import split.core.PlatformDirectory
 import split.core.SettlementId
 import split.core.SettlementRepository
@@ -2501,6 +2528,7 @@ import java.util.UUID
 
 class SettleCommand(
     private val platformDirectory: PlatformDirectory,
+    private val groupRepository: GroupRepository,
     private val settlementRepository: SettlementRepository,
     private val telegramApi: TelegramApi,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
@@ -2523,11 +2551,13 @@ class SettleCommand(
             return
         }
 
+        val group = groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
+
         val settlement = try {
             createSettlement(
                 id = SettlementId(idGenerator()),
                 groupId = context.groupId,
-                currency = "USD",
+                currency = group.defaultCurrency,
                 from = context.memberId,
                 to = counterpartyId,
                 amount = parsed.amount,
@@ -2545,12 +2575,12 @@ class SettleCommand(
 }
 ```
 
-Note: this hard-codes `currency = "USD"` rather than looking up the group's `defaultCurrency`, matching this plan's single-currency scope (see "Out of scope"); a `GroupRepository` lookup can replace it when multi-currency support lands.
+Note: this uses `group.defaultCurrency`, matching every other money-touching command (`/add`, `/balances`, `/list`, `/delete`) — an earlier draft of this task hardcoded `currency = "USD"`, which would have silently recorded settlements under the wrong currency in any group that ran `/currency`, making them invisible to `/balances` (which filters by the group's actual currency). Caught and fixed during review, with a regression test (`"records the settlement under the group's currency, not a hardcoded one"`) proving it.
 
 - [ ] **Step 6: Run tests to verify they pass**
 
 Run: `./gradlew :telegram:test --tests "split.telegram.CommandParsingSpec" --tests "split.telegram.SettleCommandSpec"`
-Expected: `BUILD SUCCESSFUL`, all tests pass (13 in `CommandParsingSpec`, 2 in `SettleCommandSpec`).
+Expected: `BUILD SUCCESSFUL`, all tests pass (13 in `CommandParsingSpec`, 3 in `SettleCommandSpec`).
 
 - [ ] **Step 7: Commit**
 
@@ -2858,7 +2888,7 @@ suspend fun main() {
         "balances" to BalancesCommand(
             groupRepository, memberRepository, expenseRepository, settlementRepository, telegramApi,
         )::handle,
-        "settle" to SettleCommand(platformDirectory, settlementRepository, telegramApi)::handle,
+        "settle" to SettleCommand(platformDirectory, groupRepository, settlementRepository, telegramApi)::handle,
         "settle_suggest" to SettleSuggestCommand(
             groupRepository, memberRepository, expenseRepository, settlementRepository, telegramApi,
         )::handle,
