@@ -31,7 +31,9 @@ fun parseAddArgs(args: String, defaultCurrency: String): AddExpenseArgs {
 
     val withoutMentions = mentionPattern.replace(args, "").trim().replace(Regex("\\s+"), " ")
     val parts = withoutMentions.split(" ", limit = 2)
-    require(parts.size == 2) { "Usage: /add <code>amount</code> [<code>currency</code>] <code>description</code> <code>@mentions...</code>" }
+    require(parts.size == 2) {
+        "Usage: /add <code>amount</code> <code>currency</code> (optional) <code>description</code> <code>@mentions...</code>"
+    }
 
     val amount = BigDecimal(parts[0])
     val rest = parts[1]
