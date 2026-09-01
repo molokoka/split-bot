@@ -423,8 +423,13 @@ data class GetChatAdministratorsResponse(
 data class SendMessageRequest(
     @SerialName("chat_id") val chatId: Long,
     val text: String,
+    // No default value: kotlinx.serialization omits fields left at their default unless
+    // encodeDefaults is set, and this one must always be sent.
+    @SerialName("parse_mode") val parseMode: String,
 )
 ```
+
+(`parseMode` was added during the HTML-formatting review round after Task 16 — see the note near the end of this document.)
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -528,7 +533,7 @@ class HttpTelegramApiSpec : StringSpec({
 
         api.sendMessage(chatId = -100, text = "hi")
 
-        requests.single().body.toByteArray().decodeToString() shouldBe """{"chat_id":-100,"text":"hi"}"""
+        requests.single().body.toByteArray().decodeToString() shouldBe """{"chat_id":-100,"text":"hi","parse_mode":"HTML"}"""
     }
 
     "getChatAdministrators parses the response" {
@@ -601,7 +606,7 @@ class HttpTelegramApi(
     override suspend fun sendMessage(chatId: Long, text: String) {
         httpClient.post("$baseUrl/bot$botToken/sendMessage") {
             contentType(ContentType.Application.Json)
-            setBody(SendMessageRequest(chatId, text))
+            setBody(SendMessageRequest(chatId, text, parseMode = "HTML"))
         }
     }
 
@@ -1116,14 +1121,18 @@ Create `telegram/src/main/kotlin/split/telegram/HelpCommand.kt`:
 ```kotlin
 package split.telegram
 
+// Sent with parse_mode HTML (see HttpTelegramApi), so placeholders use <code>...</code>
+// rather than bare <angle brackets> — a raw "<amount>" would be read as an (invalid,
+// unclosed) HTML tag and mangle or break the message. (Added during the HTML-formatting
+// review round after Task 16 — see the note near the end of this document.)
 internal const val HELP_TEXT = """Commands:
-/add <amount> [CURRENCY] <description> @mentions... — log an expense you paid, split equally
+/add <code>amount</code> [<code>currency</code>] <code>description</code> <code>@mentions...</code> — log an expense you paid, split equally
 /members — list who I recognize in this group
-/currency <code> — set this group's default currency
+/currency <code>currency</code> — set this group's default currency
 /balances — see who owes you and who you owe
 /list — last 10 expenses
-/delete <id> — remove an expense (payer or admin only)
-/settle @person <amount> — record that you paid them
+/delete <code>id</code> — remove an expense (payer or admin only)
+/settle <code>@person</code> <code>amount</code> — record that you paid them
 /settle_suggest — minimal set of payments to settle the group up
 /help — this message"""
 
@@ -1209,7 +1218,7 @@ class CurrencyCommandSpec : StringSpec({
             command.handle(CommandContext(-100, MemberId("m1"), "1", groupId, "not a code"))
 
             groupRepository.find(groupId)!!.defaultCurrency shouldBe IdentityResolver.DEFAULT_CURRENCY
-            telegramApi.sentMessages shouldBe listOf(-100L to "Usage: /currency <3-letter code>, e.g. /currency EUR")
+            telegramApi.sentMessages shouldBe listOf(-100L to "Usage: /currency <code>currency</code>, e.g. /currency EUR")
         }
     }
 })
@@ -1236,7 +1245,7 @@ class CurrencyCommand(
     suspend fun handle(context: CommandContext) {
         val code = context.args.trim().uppercase()
         if (!Regex("^[A-Z]{3}$").matches(code)) {
-            telegramApi.sendMessage(context.chatId, "Usage: /currency <3-letter code>, e.g. /currency EUR")
+            telegramApi.sendMessage(context.chatId, "Usage: /currency <code>currency</code>, e.g. /currency EUR")
             return
         }
         groupRepository.updateCurrency(context.groupId, code)
@@ -1348,7 +1357,7 @@ class MembersCommand(
 
 internal fun formatMembers(members: List<Member>): String {
     if (members.isEmpty()) return "No members yet."
-    return members.joinToString("\n") { "• ${it.displayName}" }
+    return members.joinToString("\n") { "• ${escapeHtml(it.displayName)}" }
 }
 ```
 
@@ -1377,7 +1386,7 @@ Pure functions — no repositories, no Telegram API — kept separate from `Memb
 
 **Interfaces:**
 - Consumes: `Expense`, `Member`, `MemberId`, `DebtPayment` (`core`).
-- Produces: `fun formatAmount(amount: BigDecimal, currency: String): String`, `fun formatExpenseConfirmation(expense: Expense, members: List<Member>): String`, `fun formatExpenseList(expenses: List<Expense>, members: List<Member>): String`, `fun formatBalances(payments: List<DebtPayment>, members: List<Member>, viewerId: MemberId, currency: String): String`, `fun formatSettleSuggestions(payments: List<DebtPayment>, members: List<Member>, currency: String): String` — consumed by Tasks 10–15. Note `currency` is a separate parameter on `formatBalances`/`formatSettleSuggestions` because `DebtPayment` (from `core`'s `simplifyDebts`) doesn't carry a currency field — callers already have it in scope from the `(group, currency)` they computed balances for. `formatExpenseConfirmation`/`formatExpenseList` don't need it as a parameter since `Expense` already carries its own `currency`. `formatExpenseList` takes `members` (added during review, alongside Task 12) so each line shows who paid and who participated, not just the amount.
+- Produces: `fun formatAmount(amount: BigDecimal, currency: String): String`, `internal fun escapeHtml(text: String): String`, `fun formatExpenseConfirmation(expense: Expense, members: List<Member>): String`, `fun formatExpenseList(expenses: List<Expense>, members: List<Member>): String`, `fun formatBalances(payments: List<DebtPayment>, members: List<Member>, viewerId: MemberId, currency: String): String`, `fun formatSettleSuggestions(payments: List<DebtPayment>, members: List<Member>, currency: String): String` — consumed by Tasks 10–15. `escapeHtml` (added during the HTML-formatting review round after Task 16, since `telegramApi.sendMessage` now sends `parse_mode: HTML`) is also used directly by `MembersCommand.kt` and `DeleteExpenseCommand.kt` for user-controlled text they format outside this file. Note `currency` is a separate parameter on `formatBalances`/`formatSettleSuggestions` because `DebtPayment` (from `core`'s `simplifyDebts`) doesn't carry a currency field — callers already have it in scope from the `(group, currency)` they computed balances for. `formatExpenseConfirmation`/`formatExpenseList` don't need it as a parameter since `Expense` already carries its own `currency`. `formatExpenseList` takes `members` (added during review, alongside Task 12) so each line shows who paid and who participated, not just the amount.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1425,7 +1434,7 @@ class MessageFormattingSpec : StringSpec({
             shares = listOf(ExpenseShare(alice.id, BigDecimal("45.00")), ExpenseShare(bob.id, BigDecimal("45.00"))),
         )
 
-        formatExpenseConfirmation(expense, members) shouldBe "Alice paid 90.00 EUR for dinner, split equally with Bob"
+        formatExpenseConfirmation(expense, members) shouldBe "Alice paid 90.00 EUR for <b>dinner</b>, split equally with Bob"
     }
 
     "formatExpenseConfirmation names the split type for EXACT and SHARES splits too" {
@@ -1443,8 +1452,8 @@ class MessageFormattingSpec : StringSpec({
         )
         val shares = exact.copy(splitType = SplitType.SHARES)
 
-        formatExpenseConfirmation(exact, members) shouldBe "Alice paid 90.00 USD for dinner, split by exact amounts with Bob"
-        formatExpenseConfirmation(shares, members) shouldBe "Alice paid 90.00 USD for dinner, split by shares with Bob"
+        formatExpenseConfirmation(exact, members) shouldBe "Alice paid 90.00 USD for <b>dinner</b>, split by exact amounts with Bob"
+        formatExpenseConfirmation(shares, members) shouldBe "Alice paid 90.00 USD for <b>dinner</b>, split by shares with Bob"
     }
 
     "formatExpenseConfirmation omits the split clause entirely when the payer is the only participant" {
@@ -1461,7 +1470,7 @@ class MessageFormattingSpec : StringSpec({
             shares = listOf(ExpenseShare(alice.id, BigDecimal("12.00"))),
         )
 
-        formatExpenseConfirmation(expense, members) shouldBe "Alice paid 12.00 USD for solo lunch"
+        formatExpenseConfirmation(expense, members) shouldBe "Alice paid 12.00 USD for <b>solo lunch</b>"
     }
 
     "formatExpenseConfirmation fails loudly if the payer isn't in the members list" {
@@ -1496,7 +1505,9 @@ class MessageFormattingSpec : StringSpec({
         )
 
         formatExpenseList(listOf(expense), members) shouldBe
-            "[abcdef12] 2026-08-28 dinner 90.00 USD, paid by Alice, split equally: Alice 45.00 USD, Bob 45.00 USD"
+            "<b>Last 10 expenses:</b>\n\n" +
+            "<code>abcdef12</code>  2026-08-28  <b>dinner</b>  90.00 USD\n" +
+            "paid by Alice, split equally: Alice 45.00 USD, Bob 45.00 USD"
     }
 
     "formatExpenseList shows the real per-person amounts for an exact split, not an equal guess" {
@@ -1514,7 +1525,9 @@ class MessageFormattingSpec : StringSpec({
         )
 
         formatExpenseList(listOf(expense), members) shouldBe
-            "[abcdef12] 2026-08-28 rent 90.00 USD, paid by Alice, split by exact amounts: Alice 50.00 USD, Bob 40.00 USD"
+            "<b>Last 10 expenses:</b>\n\n" +
+            "<code>abcdef12</code>  2026-08-28  <b>rent</b>  90.00 USD\n" +
+            "paid by Alice, split by exact amounts: Alice 50.00 USD, Bob 40.00 USD"
     }
 
     "formatExpenseList shows the real per-person amounts for a shares split" {
@@ -1532,7 +1545,9 @@ class MessageFormattingSpec : StringSpec({
         )
 
         formatExpenseList(listOf(expense), members) shouldBe
-            "[abcdef12] 2026-08-28 groceries 90.00 USD, paid by Alice, split by shares: Alice 60.00 USD, Bob 30.00 USD"
+            "<b>Last 10 expenses:</b>\n\n" +
+            "<code>abcdef12</code>  2026-08-28  <b>groceries</b>  90.00 USD\n" +
+            "paid by Alice, split by shares: Alice 60.00 USD, Bob 30.00 USD"
     }
 
     "formatExpenseList explains there's nothing yet" {
@@ -1591,10 +1606,21 @@ import java.math.RoundingMode
 fun formatAmount(amount: BigDecimal, currency: String): String =
     "${amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString()} $currency"
 
+// Every message is sent with parse_mode HTML (see HttpTelegramApi), so any user-controlled
+// text — display names, expense descriptions — must be escaped before being interpolated
+// into a formatted string, or a stray '<', '>', or '&' produces malformed HTML that Telegram
+// either mangles or rejects outright. Static text we write ourselves doesn't need this, but
+// must in turn avoid raw '<'/'>' of its own (see HELP_TEXT and the Usage messages, which use
+// <code>...</code> placeholders instead of bare <placeholder> for exactly this reason).
+internal fun escapeHtml(text: String): String = text
+    .replace("&", "&amp;")
+    .replace("<", "&lt;")
+    .replace(">", "&gt;")
+
 fun formatExpenseConfirmation(expense: Expense, members: List<Member>): String {
     val nameOf = members.associateBy { it.id }
-    val payerName = nameOf.getValue(expense.payerId).displayName
-    val base = "$payerName paid ${formatAmount(expense.amount, expense.currency)} for ${expense.description}"
+    val payerName = escapeHtml(nameOf.getValue(expense.payerId).displayName)
+    val base = "$payerName paid ${formatAmount(expense.amount, expense.currency)} for <b>${escapeHtml(expense.description)}</b>"
 
     // The payer is dropped from this list — they're already named as the payer, so
     // repeating them in "split with" reads as if they split the expense with themselves.
@@ -1605,7 +1631,7 @@ fun formatExpenseConfirmation(expense: Expense, members: List<Member>): String {
     val otherParticipants = expense.shares
         .filter { it.memberId != expense.payerId }
         .sortedBy { nameOf.getValue(it.memberId).displayName }
-        .joinToString(", ") { nameOf.getValue(it.memberId).displayName }
+        .joinToString(", ") { escapeHtml(nameOf.getValue(it.memberId).displayName) }
 
     return if (otherParticipants.isEmpty()) {
         base
@@ -1622,7 +1648,10 @@ private fun splitTypeLabel(splitType: SplitType): String = when (splitType) {
 
 fun formatExpenseList(expenses: List<Expense>, members: List<Member>): String {
     if (expenses.isEmpty()) return "No expenses yet — use /add to log one."
-    return expenses.joinToString("\n") { formatExpenseListLine(it, members) }
+    // Blank line between entries, since a wall of unbroken lines is hard to scan in Telegram.
+    // Header names the 10-expense cap ListCommand applies, so it's not a mystery why an
+    // older expense might be missing from the list.
+    return "<b>Last 10 expenses:</b>\n\n" + expenses.joinToString("\n\n") { formatExpenseListLine(it, members) }
 }
 
 // Deliberately its own format rather than reusing formatExpenseConfirmation: /list is an
@@ -1630,16 +1659,22 @@ fun formatExpenseList(expenses: List<Expense>, members: List<Member>): String {
 // each person's actual share amount — for an EQUAL split that's implied (everyone pays the
 // same), but that's the whole point of EXACT/SHARES splits: amounts differ per person, and
 // naming the split type without the breakdown wouldn't say how much anyone actually owes.
+// Entries are joined with a blank line and each one spans two lines (headline, then the
+// paid-by/breakdown line) — the HTML-formatting review round found the original single-line-
+// per-expense, no-blank-line layout unreadable once there were more than a couple of expenses.
 private fun formatExpenseListLine(expense: Expense, members: List<Member>): String {
     val nameOf = members.associateBy { it.id }
     val shortId = expense.id.value.take(8)
     val date = expense.createdAt.toString().take(10)
-    val payerName = nameOf.getValue(expense.payerId).displayName
+    val payerName = escapeHtml(nameOf.getValue(expense.payerId).displayName)
     val breakdown = expense.shares
         .sortedBy { nameOf.getValue(it.memberId).displayName }
-        .joinToString(", ") { share -> "${nameOf.getValue(share.memberId).displayName} ${formatAmount(share.shareAmount, expense.currency)}" }
+        .joinToString(", ") { share ->
+            "${escapeHtml(nameOf.getValue(share.memberId).displayName)} ${formatAmount(share.shareAmount, expense.currency)}"
+        }
 
-    return "[$shortId] $date ${expense.description} ${formatAmount(expense.amount, expense.currency)}, " +
+    return "<code>$shortId</code>  $date  <b>${escapeHtml(expense.description)}</b>  " +
+        "${formatAmount(expense.amount, expense.currency)}\n" +
         "paid by $payerName, split ${splitTypeLabel(expense.splitType)}: $breakdown"
 }
 
@@ -1651,9 +1686,9 @@ fun formatBalances(payments: List<DebtPayment>, members: List<Member>, viewerId:
     return relevant.joinToString("\n") { payment ->
         val amount = formatAmount(payment.amount, currency)
         if (payment.from == viewerId) {
-            "You owe ${nameOf.getValue(payment.to).displayName} $amount"
+            "You owe ${escapeHtml(nameOf.getValue(payment.to).displayName)} $amount"
         } else {
-            "${nameOf.getValue(payment.from).displayName} owes you $amount"
+            "${escapeHtml(nameOf.getValue(payment.from).displayName)} owes you $amount"
         }
     }
 }
@@ -1662,8 +1697,8 @@ fun formatSettleSuggestions(payments: List<DebtPayment>, members: List<Member>, 
     if (payments.isEmpty()) return "Everyone's settled up — nothing to do!"
     val nameOf = members.associateBy { it.id }
     return payments.joinToString("\n") { payment ->
-        val from = nameOf.getValue(payment.from).displayName
-        val to = nameOf.getValue(payment.to).displayName
+        val from = escapeHtml(nameOf.getValue(payment.from).displayName)
+        val to = escapeHtml(nameOf.getValue(payment.to).displayName)
         "$from pays $to ${formatAmount(payment.amount, currency)}"
     }
 }
@@ -1828,11 +1863,11 @@ private val currencyCodePattern = Regex("^[A-Z]{3}$")
 
 fun parseAddArgs(args: String, defaultCurrency: String): AddExpenseArgs {
     val mentions = extractMentions(args)
-    require(mentions.isNotEmpty()) { "Mention at least one participant, e.g. /add 90 dinner @alice @bob" }
+    require(mentions.isNotEmpty()) { "Mention at least one participant, e.g. /add 90 dinner <code>@alice</code> <code>@bob</code>" }
 
     val withoutMentions = mentionPattern.replace(args, "").trim().replace(Regex("\\s+"), " ")
     val parts = withoutMentions.split(" ", limit = 2)
-    require(parts.size == 2) { "Usage: /add <amount> [CURRENCY] <description> @mentions..." }
+    require(parts.size == 2) { "Usage: /add <code>amount</code> [<code>currency</code>] <code>description</code> <code>@mentions...</code>" }
 
     val amount = BigDecimal(parts[0])
     val rest = parts[1]
@@ -2126,7 +2161,7 @@ class DeleteExpenseCommand(
     suspend fun handle(context: CommandContext) {
         val idPrefix = context.args.trim()
         if (idPrefix.isEmpty()) {
-            telegramApi.sendMessage(context.chatId, "Usage: /delete <id> (see /list for ids)")
+            telegramApi.sendMessage(context.chatId, "Usage: /delete <code>id</code> (see /list for ids)")
             return
         }
 
@@ -2135,7 +2170,7 @@ class DeleteExpenseCommand(
             .firstOrNull { it.id.value.startsWith(idPrefix, ignoreCase = true) }
 
         if (expense == null) {
-            telegramApi.sendMessage(context.chatId, "No active expense found matching \"$idPrefix\" — check /list.")
+            telegramApi.sendMessage(context.chatId, "No active expense found matching \"${escapeHtml(idPrefix)}\" — check /list.")
             return
         }
 
@@ -2150,7 +2185,7 @@ class DeleteExpenseCommand(
         expenseRepository.softDelete(expense.id, Instant.now(clock))
         telegramApi.sendMessage(
             context.chatId,
-            "Deleted \"${expense.description}\" (${formatAmount(expense.amount, expense.currency)}).",
+            "Deleted \"${escapeHtml(expense.description)}\" (${formatAmount(expense.amount, expense.currency)}).",
         )
     }
 }
@@ -2254,8 +2289,11 @@ class ListCommandSpec : StringSpec({
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(
-                -100L to "[newer123] 2026-08-28 dinner 20.00 USD, paid by Bob, split equally: Alice 10.00 USD, Bob 10.00 USD\n" +
-                    "[older123] 2026-08-27 lunch 10.00 USD, paid by Alice, split equally: Alice 10.00 USD",
+                -100L to "<b>Last 10 expenses:</b>\n\n" +
+                    "<code>newer123</code>  2026-08-28  <b>dinner</b>  20.00 USD\n" +
+                    "paid by Bob, split equally: Alice 10.00 USD, Bob 10.00 USD\n\n" +
+                    "<code>older123</code>  2026-08-27  <b>lunch</b>  10.00 USD\n" +
+                    "paid by Alice, split equally: Alice 10.00 USD",
             )
         }
     }
@@ -2307,8 +2345,11 @@ class ListCommandSpec : StringSpec({
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(
-                -100L to "[bbbb1234] 2026-08-29 utilities 90.00 USD, paid by Bob, split by shares: Alice 30.00 USD, Bob 60.00 USD\n" +
-                    "[aaaa1234] 2026-08-28 rent 100.00 USD, paid by Alice, split by exact amounts: Alice 60.00 USD, Bob 40.00 USD",
+                -100L to "<b>Last 10 expenses:</b>\n\n" +
+                    "<code>bbbb1234</code>  2026-08-29  <b>utilities</b>  90.00 USD\n" +
+                    "paid by Bob, split by shares: Alice 30.00 USD, Bob 60.00 USD\n\n" +
+                    "<code>aaaa1234</code>  2026-08-28  <b>rent</b>  100.00 USD\n" +
+                    "paid by Alice, split by exact amounts: Alice 60.00 USD, Bob 40.00 USD",
             )
         }
     }
@@ -2660,9 +2701,9 @@ data class SettleArgs(val counterpartyUsername: String, val amount: BigDecimal)
 
 fun parseSettleArgs(args: String): SettleArgs {
     val mentions = extractMentions(args)
-    require(mentions.size == 1) { "Usage: /settle @person <amount>" }
+    require(mentions.size == 1) { "Usage: /settle <code>@person</code> <code>amount</code>" }
     val withoutMention = mentionPattern.replace(args, "").trim()
-    require(withoutMention.isNotEmpty()) { "Usage: /settle @person <amount>" }
+    require(withoutMention.isNotEmpty()) { "Usage: /settle <code>@person</code> <code>amount</code>" }
     return SettleArgs(mentions[0], BigDecimal(withoutMention))
 }
 ```
@@ -3161,3 +3202,45 @@ git add telegram/src/main/kotlin/split/telegram/BotApplication.kt \
         telegram/build.gradle.kts
 git commit -m "Add poll loop and application bootstrap"
 ```
+
+## Post-Task-16 review: HTML formatting
+
+After all 16 tasks shipped, live manual testing showed `/list` output as an unreadable wall of plain text in the Telegram client. Fix: turn on Telegram's `parse_mode: HTML` on every outgoing message and format accordingly.
+
+- `TelegramDtos.kt`'s `SendMessageRequest` gained a `parseMode: String` field (`@SerialName("parse_mode")`), deliberately with **no default value** — kotlinx.serialization omits default-valued fields from serialized output unless `encodeDefaults` is set, and this field must always be sent. `HttpTelegramApi.sendMessage` now always passes `parseMode = "HTML"`.
+- `MessageFormatting.kt` gained `internal fun escapeHtml(text: String)` (escapes `&`, `<`, `>`) and applies it to every piece of user-controlled text — display names and expense descriptions — before interpolating it into a message. It also now wraps expense descriptions in `<b>...</b>` and `/list`'s short ids in `<code>...</code>`, and joins `/list` entries with a blank line (`"\n\n"`) instead of one line each.
+- `MembersCommand.kt`'s `formatMembers` and `DeleteExpenseCommand.kt`'s two user-text interpolations (the deleted expense's description, and the `idPrefix` echoed back on a not-found error) now go through `escapeHtml` too, for the same reason.
+- Several static strings we write ourselves used raw `<placeholder>` syntax, which HTML parse mode reads as an (invalid, unclosed) tag and mangles: `HELP_TEXT` (`HelpCommand.kt`), the `/add` and `/settle` usage messages (`CommandParsing.kt`), the `/currency` usage message (`CurrencyCommand.kt`), and the `/delete` usage message (`DeleteExpenseCommand.kt`) were all changed to use `<code>placeholder</code>` instead.
+- `@mention` usernames (in `AddExpenseCommand.kt`, `SettleCommand.kt`) are not escaped — Telegram usernames are constrained to alphanumerics and underscores, so they can't contain HTML metacharacters.
+- All affected tests (`HttpTelegramApiSpec`, `MessageFormattingSpec`, `ListCommandSpec`, `CurrencyCommandSpec`) were updated to match; the embedded code/test blocks above for Tasks 2, 3, 9, and 12–15 reflect the final, HTML-formatted versions.
+- Follow-up during the same review round: the `/add` line's currency placeholder (`[CURRENCY]`) and the `/currency` line's own placeholder (`currency_code`, later `code`) were two different styles for the same concept — unified to lowercase `currency` wrapped in `<code>` in both places (`HELP_TEXT`, and the usage strings in `CommandParsing.kt`/`CurrencyCommand.kt`).
+- Further follow-up: `formatExpenseList` now prefixes its output with `<b>Last 10 expenses:</b>\n\n`, naming the 10-expense cap `ListCommand` applies so it's not a mystery why an older expense is missing from the list.
+- Follow-up: `HELP_TEXT` and the `/add`/`/settle` usage/error strings used bare `@mentions`/`@person`/`@alice`/`@bob` example text; since these are syntactically valid Telegram usernames (5+ letters/digits/underscores), Telegram's client read them as real mentions and linked/pinged whichever accounts actually held those usernames. Wrapped every `@`-prefixed placeholder in `<code>...</code>` too — Telegram can't nest other entities (including mentions) inside `<code>`/`<pre>`, so this stops the auto-detection the same way it already stopped `<amount>`-style text from being read as a broken HTML tag.
+
+## Post-Task-16 review: @username preferred over display name
+
+Follow-up to the `@`-in-help-text fix above, from the same conversation: static example text getting misread as a mention was one problem; the opposite gap was also raised — bot messages that name real, known members (`/list`, `/balances`, `/settle_suggest`, `/members`, the `/add` confirmation) showed the plain `displayName` even when the member's Telegram `@username` was already on file, when `@username` is the more idiomatic, clickable way to refer to someone in a Telegram message.
+
+This turned out to be a bigger change than a formatting tweak, because `core.Member` only carries `id` and `displayName` — the Telegram username lives separately, in `platform_identity` via `PlatformDirectory`, and there was no way to look up "the usernames for this list of members" in bulk.
+
+- `core.PlatformDirectory` gained `suspend fun findUsernames(platform: String, memberIds: List<MemberId>): Map<MemberId, String>`. A member absent from the returned map means either they have no linked platform identity yet, or their identity has no username set — callers fall back to `displayName` either way. Implemented in `ExposedPlatformDirectory` via a single `PlatformIdentityTable` query filtered by platform and `memberId inList ...`, keeping only rows with a non-null username.
+- `MessageFormatting.kt` gained `internal fun mentionName(member: Member, usernames: Map<MemberId, String>): String`, used everywhere a member's name is rendered: `usernames[member.id]?.let { "@$it" } ?: escapeHtml(member.displayName)`. No escaping needed on the `@username` branch — Telegram usernames are constrained to letters, digits, and underscores. `formatExpenseConfirmation`, `formatExpenseList`, `formatBalances`, and `formatSettleSuggestions` each gained a trailing `usernames: Map<MemberId, String> = emptyMap()` parameter (defaulted so callers/tests that don't care about usernames are unaffected) and now call `mentionName` instead of `escapeHtml(...displayName)` directly. `MembersCommand.kt`'s `formatMembers` got the same treatment.
+- Every command that formats a member list now fetches `platformDirectory.findUsernames(IdentityResolver.PLATFORM, members.map { it.id })` before formatting and threads it through: `MembersCommand`, `ListCommand`, `BalancesCommand`, `SettleSuggestCommand` all gained a `platformDirectory: PlatformDirectory` constructor parameter (`AddExpenseCommand` already had one). `BotApplication.kt`'s wiring was updated to pass it to all four.
+- Test fallout: every test that resolves a member via `IdentityResolver.resolveMember(externalUserId, username, displayName)` with a non-null `username` now sees that member named as `@username` instead of the plain display name in any command-level assertion — `ListCommandSpec`, `BalancesCommandSpec`, `SettleSuggestCommandSpec`, and `MembersCommandSpec` were all updated accordingly (plus a couple of new tests confirming the plain-display-name fallback still works when `username` is `null`). `MessageFormattingSpec` gained direct unit tests for `mentionName` and for the `usernames` parameter on `formatExpenseConfirmation`/`formatBalances`/`formatSettleSuggestions`. `ExposedPlatformDirectorySpec` gained tests for `findUsernames`, including the empty-input and no-linked-identity cases.
+
+## Post-Task-16 review: plain-text titles on every response, separated by a blank line
+
+Follow-up in the same conversation: the `/list` title (`Last 10 expenses:`) was well received, but bold read as too visually loud next to the bold expense descriptions right below it — changed from `<b>Last 10 expenses:</b>` to plain `Last 10 expenses:`. The same title-then-blank-line pattern was then extended to every other command that sends the user informational content, for consistency:
+
+- `formatExpenseConfirmation` → `"Expense added:\n\n..."`
+- `formatBalances` (non-empty case only — `"You're all settled up!"` stays a single line) → `"Balances:\n\n..."`
+- `formatSettleSuggestions` (non-empty case only — `"Everyone's settled up — nothing to do!"` stays a single line) → `"Suggested settlements:\n\n..."`
+- `formatMembers` (non-empty case only — `"No members yet."` stays a single line) → `"Members:\n\n..."`
+- `HELP_TEXT` — a blank line was inserted after the existing `Commands:` line, which was already acting as a title but butted straight up against the first command.
+- `CurrencyCommand`'s success message → `"Currency updated:\n\nThis group's default currency is now $code."`
+- `SettleCommand`'s success message → `"Settlement recorded:\n\nYou paid $amount."` (previously a single line starting with `"Recorded: ..."`)
+- `DeleteExpenseCommand`'s success message → `"Expense deleted:\n\n\"$description\" ($amount)."` (previously `"Deleted \"$description\" ($amount)."` — the leading verb moved into the title so it isn't stated twice)
+
+Deliberately **not** titled: the various `Usage: ...`, `"I don't recognize @...`, and other error/validation one-liners. Those are single sentences already, not content blocks, so a title-plus-blank-line would just add noise without helping readability — titles were reserved for messages that present the result of a successful action or a list of things.
+
+All affected tests across `MessageFormattingSpec`, `ListCommandSpec`, `MembersCommandSpec`, `BalancesCommandSpec`, `SettleSuggestCommandSpec`, `CurrencyCommandSpec`, `SettleCommandSpec`, and `DeleteExpenseCommandSpec` were updated to match.
