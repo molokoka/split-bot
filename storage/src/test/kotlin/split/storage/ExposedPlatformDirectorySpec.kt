@@ -63,4 +63,31 @@ class ExposedPlatformDirectorySpec : StringSpec({
             ExposedPlatformDirectory(db).findMemberByUsername("telegram", "nobody") shouldBe null
         }
     }
+
+    "findUsernames returns only members with a linked, non-null username" {
+        withTestDatabase { db ->
+            val memberRepository = ExposedMemberRepository(db)
+            memberRepository.create(Member(MemberId("alice"), "Alice"))
+            memberRepository.create(Member(MemberId("bob"), "Bob"))
+            memberRepository.create(Member(MemberId("carol"), "Carol"))
+            val directory = ExposedPlatformDirectory(db)
+            directory.linkMember("telegram", "1", MemberId("alice"))
+            directory.setUsername("telegram", "1", "alice_w")
+            directory.linkMember("telegram", "2", MemberId("bob"))
+            // carol never linked a platform identity at all
+
+            val usernames = directory.findUsernames(
+                "telegram",
+                listOf(MemberId("alice"), MemberId("bob"), MemberId("carol")),
+            )
+
+            usernames shouldBe mapOf(MemberId("alice") to "alice_w")
+        }
+    }
+
+    "findUsernames returns an empty map for an empty member list" {
+        withTestDatabase { db ->
+            ExposedPlatformDirectory(db).findUsernames("telegram", emptyList()) shouldBe emptyMap()
+        }
+    }
 })

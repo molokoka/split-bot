@@ -22,7 +22,8 @@ class SettleSuggestCommandSpec : StringSpec({
             val memberRepository = ExposedMemberRepository(db)
             val expenseRepository = ExposedExpenseRepository(db)
             val settlementRepository = ExposedSettlementRepository(db)
-            val resolver = IdentityResolver(ExposedPlatformDirectory(db), memberRepository, groupRepository)
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
 
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
             val bobId = resolver.resolveMember("2", "bob", "Bob")
@@ -46,11 +47,11 @@ class SettleSuggestCommandSpec : StringSpec({
             )
 
             val telegramApi = FakeTelegramApi()
-            val command = SettleSuggestCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, telegramApi)
+            val command = SettleSuggestCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(-100L to "Bob pays Alice 30.00 USD")
+            telegramApi.sentMessages shouldBe listOf(-100L to "@bob pays @alice 30.00 USD")
         }
     }
 
@@ -60,12 +61,13 @@ class SettleSuggestCommandSpec : StringSpec({
             val memberRepository = ExposedMemberRepository(db)
             val expenseRepository = ExposedExpenseRepository(db)
             val settlementRepository = ExposedSettlementRepository(db)
-            val resolver = IdentityResolver(ExposedPlatformDirectory(db), memberRepository, groupRepository)
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
             val groupId = resolver.resolveGroup("-100001")
 
             val telegramApi = FakeTelegramApi()
-            val command = SettleSuggestCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, telegramApi)
+            val command = SettleSuggestCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
@@ -79,7 +81,8 @@ class SettleSuggestCommandSpec : StringSpec({
             val memberRepository = ExposedMemberRepository(db)
             val expenseRepository = ExposedExpenseRepository(db)
             val settlementRepository = ExposedSettlementRepository(db)
-            val resolver = IdentityResolver(ExposedPlatformDirectory(db), memberRepository, groupRepository)
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
 
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
             val bobId = resolver.resolveMember("2", "bob", "Bob")
@@ -131,12 +134,12 @@ class SettleSuggestCommandSpec : StringSpec({
             )
 
             val telegramApi = FakeTelegramApi()
-            val command = SettleSuggestCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, telegramApi)
+            val command = SettleSuggestCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(
-                -100L to "Carol pays Alice 10.00 USD\nCarol pays Bob 10.00 USD",
+                -100L to "@carol pays @alice 10.00 USD\n@carol pays @bob 10.00 USD",
             )
         }
     }

@@ -22,7 +22,8 @@ class BalancesCommandSpec : StringSpec({
             val memberRepository = ExposedMemberRepository(db)
             val expenseRepository = ExposedExpenseRepository(db)
             val settlementRepository = ExposedSettlementRepository(db)
-            val resolver = IdentityResolver(ExposedPlatformDirectory(db), memberRepository, groupRepository)
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
 
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
             val bobId = resolver.resolveMember("2", "bob", "Bob")
@@ -46,11 +47,11 @@ class BalancesCommandSpec : StringSpec({
             )
 
             val telegramApi = FakeTelegramApi()
-            val command = BalancesCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, telegramApi)
+            val command = BalancesCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
 
             command.handle(CommandContext(-100, bobId, "2", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(-100L to "You owe Alice 30.00 USD")
+            telegramApi.sentMessages shouldBe listOf(-100L to "You owe @alice 30.00 USD")
         }
     }
 
@@ -60,12 +61,13 @@ class BalancesCommandSpec : StringSpec({
             val memberRepository = ExposedMemberRepository(db)
             val expenseRepository = ExposedExpenseRepository(db)
             val settlementRepository = ExposedSettlementRepository(db)
-            val resolver = IdentityResolver(ExposedPlatformDirectory(db), memberRepository, groupRepository)
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
             val groupId = resolver.resolveGroup("-100001")
 
             val telegramApi = FakeTelegramApi()
-            val command = BalancesCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, telegramApi)
+            val command = BalancesCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
@@ -79,7 +81,8 @@ class BalancesCommandSpec : StringSpec({
             val memberRepository = ExposedMemberRepository(db)
             val expenseRepository = ExposedExpenseRepository(db)
             val settlementRepository = ExposedSettlementRepository(db)
-            val resolver = IdentityResolver(ExposedPlatformDirectory(db), memberRepository, groupRepository)
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
 
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
             val bobId = resolver.resolveMember("2", "bob", "Bob")
@@ -120,11 +123,11 @@ class BalancesCommandSpec : StringSpec({
             )
 
             val telegramApi = FakeTelegramApi()
-            val command = BalancesCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, telegramApi)
+            val command = BalancesCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
 
             command.handle(CommandContext(-100, bobId, "2", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(-100L to "You owe Alice 20.00 USD")
+            telegramApi.sentMessages shouldBe listOf(-100L to "You owe @alice 20.00 USD")
         }
     }
 
@@ -134,7 +137,8 @@ class BalancesCommandSpec : StringSpec({
             val memberRepository = ExposedMemberRepository(db)
             val expenseRepository = ExposedExpenseRepository(db)
             val settlementRepository = ExposedSettlementRepository(db)
-            val resolver = IdentityResolver(ExposedPlatformDirectory(db), memberRepository, groupRepository)
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
 
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
             val bobId = resolver.resolveMember("2", "bob", "Bob")
@@ -188,16 +192,16 @@ class BalancesCommandSpec : StringSpec({
             )
 
             val telegramApi = FakeTelegramApi()
-            val command = BalancesCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, telegramApi)
+            val command = BalancesCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
             command.handle(CommandContext(-100, bobId, "2", groupId, ""))
             command.handle(CommandContext(-100, carolId, "3", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(
-                -100L to "Carol owes you 10.00 USD", // alice
-                -100L to "Carol owes you 10.00 USD", // bob
-                -100L to "You owe Alice 10.00 USD\nYou owe Bob 10.00 USD", // carol
+                -100L to "@carol owes you 10.00 USD", // alice
+                -100L to "@carol owes you 10.00 USD", // bob
+                -100L to "You owe @alice 10.00 USD\nYou owe @bob 10.00 USD", // carol
             )
         }
     }

@@ -49,18 +49,18 @@ suspend fun main() {
         "start" to StartCommand(telegramApi)::handle,
         "help" to HelpCommand(telegramApi)::handle,
         "currency" to CurrencyCommand(groupRepository, telegramApi)::handle,
-        "members" to MembersCommand(memberRepository, telegramApi)::handle,
+        "members" to MembersCommand(memberRepository, platformDirectory, telegramApi)::handle,
         "add" to AddExpenseCommand(
             platformDirectory, groupRepository, memberRepository, expenseRepository, identityResolver, telegramApi,
         )::handle,
         "delete" to DeleteExpenseCommand(groupRepository, expenseRepository, telegramApi)::handle,
-        "list" to ListCommand(groupRepository, memberRepository, expenseRepository, telegramApi)::handle,
+        "list" to ListCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)::handle,
         "balances" to BalancesCommand(
-            groupRepository, memberRepository, expenseRepository, settlementRepository, telegramApi,
+            groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi,
         )::handle,
         "settle" to SettleCommand(platformDirectory, groupRepository, settlementRepository, telegramApi)::handle,
         "settle_suggest" to SettleSuggestCommand(
-            groupRepository, memberRepository, expenseRepository, settlementRepository, telegramApi,
+            groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi,
         )::handle,
     )
 

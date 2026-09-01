@@ -3,11 +3,13 @@ package split.telegram
 import split.core.ExpenseRepository
 import split.core.GroupRepository
 import split.core.MemberRepository
+import split.core.PlatformDirectory
 
 class ListCommand(
     private val groupRepository: GroupRepository,
     private val memberRepository: MemberRepository,
     private val expenseRepository: ExpenseRepository,
+    private val platformDirectory: PlatformDirectory,
     private val telegramApi: TelegramApi,
 ) {
     suspend fun handle(context: CommandContext) {
@@ -16,7 +18,8 @@ class ListCommand(
             .sortedByDescending { it.createdAt }
             .take(10)
         val members = memberRepository.findByGroup(context.groupId)
+        val usernames = platformDirectory.findUsernames(IdentityResolver.PLATFORM, members.map { it.id })
 
-        telegramApi.sendMessage(context.chatId, formatExpenseList(expenses, members))
+        telegramApi.sendMessage(context.chatId, formatExpenseList(expenses, members, usernames))
     }
 }

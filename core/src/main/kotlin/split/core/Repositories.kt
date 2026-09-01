@@ -35,4 +35,10 @@ interface PlatformDirectory {
     suspend fun setUsername(platform: String, externalUserId: String, username: String)
     suspend fun findGroup(platform: String, externalChatId: String): GroupId?
     suspend fun linkGroup(platform: String, externalChatId: String, groupId: GroupId)
+
+    // Members without a linked platform identity, or whose identity has no username set,
+    // are simply absent from the returned map — callers fall back to the member's display
+    // name for those. A member is only missing entirely once they've never interacted with
+    // the bot; a null/absent username means they're known but haven't set one in Telegram.
+    suspend fun findUsernames(platform: String, memberIds: List<MemberId>): Map<MemberId, String>
 }

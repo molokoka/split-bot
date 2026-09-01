@@ -3,6 +3,7 @@ package split.telegram
 import split.core.ExpenseRepository
 import split.core.GroupRepository
 import split.core.MemberRepository
+import split.core.PlatformDirectory
 import split.core.SettlementRepository
 import split.core.computeBalances
 import split.core.simplifyDebts
@@ -12,6 +13,7 @@ class SettleSuggestCommand(
     private val memberRepository: MemberRepository,
     private val expenseRepository: ExpenseRepository,
     private val settlementRepository: SettlementRepository,
+    private val platformDirectory: PlatformDirectory,
     private val telegramApi: TelegramApi,
 ) {
     suspend fun handle(context: CommandContext) {
@@ -21,10 +23,11 @@ class SettleSuggestCommand(
         val balances = computeBalances(group.defaultCurrency, expenses, settlements)
         val payments = simplifyDebts(balances)
         val members = memberRepository.findByGroup(context.groupId)
+        val usernames = platformDirectory.findUsernames(IdentityResolver.PLATFORM, members.map { it.id })
 
         telegramApi.sendMessage(
             context.chatId,
-            formatSettleSuggestions(payments, members, group.defaultCurrency),
+            formatSettleSuggestions(payments, members, group.defaultCurrency, usernames),
         )
     }
 }

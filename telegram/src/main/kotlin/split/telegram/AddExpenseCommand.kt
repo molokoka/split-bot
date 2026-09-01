@@ -66,6 +66,7 @@ class AddExpenseCommand(
         expenseRepository.create(expense)
 
         val members = memberRepository.findByGroup(context.groupId)
-        telegramApi.sendMessage(context.chatId, formatExpenseConfirmation(expense, members))
+        val usernames = platformDirectory.findUsernames(IdentityResolver.PLATFORM, members.map { it.id })
+        telegramApi.sendMessage(context.chatId, formatExpenseConfirmation(expense, members, usernames))
     }
 }

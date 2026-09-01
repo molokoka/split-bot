@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -85,6 +86,24 @@ class ExposedPlatformDirectory(private val db: Database) : PlatformDirectory {
                     it[this.externalChatId] = externalChatId
                     it[this.groupId] = groupId.value
                 }
+            }
+        }
+
+    override suspend fun findUsernames(platform: String, memberIds: List<MemberId>): Map<MemberId, String> =
+        withContext(Dispatchers.IO) {
+            if (memberIds.isEmpty()) return@withContext emptyMap()
+            suspendTransaction(db) {
+                PlatformIdentityTable.selectAll()
+                    .where {
+                        (PlatformIdentityTable.platform eq platform) and
+                            (PlatformIdentityTable.memberId inList memberIds.map { it.value })
+                    }
+                    .mapNotNull { row ->
+                        row[PlatformIdentityTable.username]?.let { username ->
+                            MemberId(row[PlatformIdentityTable.memberId]) to username
+                        }
+                    }
+                    .toMap()
             }
         }
 }
