@@ -35,7 +35,7 @@ class CurrencyCommandSpec : StringSpec({
             command.handle(CommandContext(-100, MemberId("m1"), "1", groupId, "not a code"))
 
             groupRepository.find(groupId)!!.defaultCurrency shouldBe IdentityResolver.DEFAULT_CURRENCY
-            telegramApi.sentMessages shouldBe listOf(-100L to "Usage: /currency <3-letter code>, e.g. /currency EUR")
+            telegramApi.sentMessages shouldBe listOf(-100L to "Usage: /currency <code>3-letter code</code>, e.g. /currency EUR")
         }
     }
 })

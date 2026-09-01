@@ -52,4 +52,7 @@ data class GetChatAdministratorsResponse(
 data class SendMessageRequest(
     @SerialName("chat_id") val chatId: Long,
     val text: String,
+    // No default value: kotlinx.serialization omits fields left at their default unless
+    // encodeDefaults is set, and this one must always be sent.
+    @SerialName("parse_mode") val parseMode: String,
 )

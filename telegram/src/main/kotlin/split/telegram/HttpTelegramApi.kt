@@ -39,7 +39,7 @@ class HttpTelegramApi(
     override suspend fun sendMessage(chatId: Long, text: String) {
         httpClient.post("$baseUrl/bot$botToken/sendMessage") {
             contentType(ContentType.Application.Json)
-            setBody(SendMessageRequest(chatId, text))
+            setBody(SendMessageRequest(chatId, text, parseMode = "HTML"))
         }
     }
 

@@ -68,7 +68,7 @@ class HttpTelegramApiSpec : StringSpec({
 
         api.sendMessage(chatId = -100, text = "hi")
 
-        requests.single().body.toByteArray().decodeToString() shouldBe """{"chat_id":-100,"text":"hi"}"""
+        requests.single().body.toByteArray().decodeToString() shouldBe """{"chat_id":-100,"text":"hi","parse_mode":"HTML"}"""
     }
 
     "getChatAdministrators parses the response" {

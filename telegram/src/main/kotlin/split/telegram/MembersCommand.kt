@@ -15,5 +15,5 @@ class MembersCommand(
 
 internal fun formatMembers(members: List<Member>): String {
     if (members.isEmpty()) return "No members yet."
-    return members.joinToString("\n") { "• ${it.displayName}" }
+    return members.joinToString("\n") { "• ${escapeHtml(it.displayName)}" }
 }

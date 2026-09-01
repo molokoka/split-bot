@@ -64,8 +64,10 @@ class ListCommandSpec : StringSpec({
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(
-                -100L to "[newer123] 2026-08-28 dinner 20.00 USD, paid by Bob, split equally: Alice 10.00 USD, Bob 10.00 USD\n" +
-                    "[older123] 2026-08-27 lunch 10.00 USD, paid by Alice, split equally: Alice 10.00 USD",
+                -100L to "<code>newer123</code>  2026-08-28  <b>dinner</b>  20.00 USD\n" +
+                    "paid by Bob, split equally: Alice 10.00 USD, Bob 10.00 USD\n\n" +
+                    "<code>older123</code>  2026-08-27  <b>lunch</b>  10.00 USD\n" +
+                    "paid by Alice, split equally: Alice 10.00 USD",
             )
         }
     }
@@ -117,8 +119,10 @@ class ListCommandSpec : StringSpec({
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(
-                -100L to "[bbbb1234] 2026-08-29 utilities 90.00 USD, paid by Bob, split by shares: Alice 30.00 USD, Bob 60.00 USD\n" +
-                    "[aaaa1234] 2026-08-28 rent 100.00 USD, paid by Alice, split by exact amounts: Alice 60.00 USD, Bob 40.00 USD",
+                -100L to "<code>bbbb1234</code>  2026-08-29  <b>utilities</b>  90.00 USD\n" +
+                    "paid by Bob, split by shares: Alice 30.00 USD, Bob 60.00 USD\n\n" +
+                    "<code>aaaa1234</code>  2026-08-28  <b>rent</b>  100.00 USD\n" +
+                    "paid by Alice, split by exact amounts: Alice 60.00 USD, Bob 40.00 USD",
             )
         }
     }

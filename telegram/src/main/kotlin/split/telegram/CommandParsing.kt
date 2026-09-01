@@ -31,7 +31,7 @@ fun parseAddArgs(args: String, defaultCurrency: String): AddExpenseArgs {
 
     val withoutMentions = mentionPattern.replace(args, "").trim().replace(Regex("\\s+"), " ")
     val parts = withoutMentions.split(" ", limit = 2)
-    require(parts.size == 2) { "Usage: /add <amount> [CURRENCY] <description> @mentions..." }
+    require(parts.size == 2) { "Usage: /add <code>amount</code> [CURRENCY] <code>description</code> @mentions..." }
 
     val amount = BigDecimal(parts[0])
     val rest = parts[1]
@@ -48,8 +48,8 @@ data class SettleArgs(val counterpartyUsername: String, val amount: BigDecimal)
 
 fun parseSettleArgs(args: String): SettleArgs {
     val mentions = extractMentions(args)
-    require(mentions.size == 1) { "Usage: /settle @person <amount>" }
+    require(mentions.size == 1) { "Usage: /settle @person <code>amount</code>" }
     val withoutMention = mentionPattern.replace(args, "").trim()
-    require(withoutMention.isNotEmpty()) { "Usage: /settle @person <amount>" }
+    require(withoutMention.isNotEmpty()) { "Usage: /settle @person <code>amount</code>" }
     return SettleArgs(mentions[0], BigDecimal(withoutMention))
 }
