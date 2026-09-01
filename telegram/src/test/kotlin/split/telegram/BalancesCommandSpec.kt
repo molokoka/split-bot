@@ -51,7 +51,7 @@ class BalancesCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, bobId, "2", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(-100L to "You owe @alice 30.00 USD")
+            telegramApi.sentMessages shouldBe listOf(-100L to "Balances:\n\nYou owe @alice 30.00 USD")
         }
     }
 
@@ -127,7 +127,7 @@ class BalancesCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, bobId, "2", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(-100L to "You owe @alice 20.00 USD")
+            telegramApi.sentMessages shouldBe listOf(-100L to "Balances:\n\nYou owe @alice 20.00 USD")
         }
     }
 
@@ -199,9 +199,9 @@ class BalancesCommandSpec : StringSpec({
             command.handle(CommandContext(-100, carolId, "3", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(
-                -100L to "@carol owes you 10.00 USD", // alice
-                -100L to "@carol owes you 10.00 USD", // bob
-                -100L to "You owe @alice 10.00 USD\nYou owe @bob 10.00 USD", // carol
+                -100L to "Balances:\n\n@carol owes you 10.00 USD", // alice
+                -100L to "Balances:\n\n@carol owes you 10.00 USD", // bob
+                -100L to "Balances:\n\nYou owe @alice 10.00 USD\nYou owe @bob 10.00 USD", // carol
             )
         }
     }

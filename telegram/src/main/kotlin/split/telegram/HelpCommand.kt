@@ -8,6 +8,7 @@ package split.telegram
 // literal example text like "@person" as a real mention and pinging whichever account
 // happens to hold that username.
 internal const val HELP_TEXT = """Commands:
+
 /add <code>amount</code> [<code>currency</code>] <code>description</code> <code>@mentions...</code> — log an expense you paid, split equally
 /members — list who I recognize in this group
 /currency <code>currency</code> — set this group's default currency

@@ -49,7 +49,7 @@ class MessageFormattingSpec : StringSpec({
         )
 
         formatExpenseConfirmation(expense, members, usernames = mapOf(alice.id to "alice_w")) shouldBe
-            "@alice_w paid 90.00 USD for <b>dinner</b>, split equally with Bob"
+            "Expense added:\n\n@alice_w paid 90.00 USD for <b>dinner</b>, split equally with Bob"
     }
 
     "formatExpenseConfirmation names payer, amount, currency, and split type, without repeating the payer" {
@@ -66,7 +66,7 @@ class MessageFormattingSpec : StringSpec({
             shares = listOf(ExpenseShare(alice.id, BigDecimal("45.00")), ExpenseShare(bob.id, BigDecimal("45.00"))),
         )
 
-        formatExpenseConfirmation(expense, members) shouldBe "Alice paid 90.00 EUR for <b>dinner</b>, split equally with Bob"
+        formatExpenseConfirmation(expense, members) shouldBe "Expense added:\n\nAlice paid 90.00 EUR for <b>dinner</b>, split equally with Bob"
     }
 
     "formatExpenseConfirmation names the split type for EXACT and SHARES splits too" {
@@ -84,8 +84,10 @@ class MessageFormattingSpec : StringSpec({
         )
         val shares = exact.copy(splitType = SplitType.SHARES)
 
-        formatExpenseConfirmation(exact, members) shouldBe "Alice paid 90.00 USD for <b>dinner</b>, split by exact amounts with Bob"
-        formatExpenseConfirmation(shares, members) shouldBe "Alice paid 90.00 USD for <b>dinner</b>, split by shares with Bob"
+        formatExpenseConfirmation(exact, members) shouldBe
+            "Expense added:\n\nAlice paid 90.00 USD for <b>dinner</b>, split by exact amounts with Bob"
+        formatExpenseConfirmation(shares, members) shouldBe
+            "Expense added:\n\nAlice paid 90.00 USD for <b>dinner</b>, split by shares with Bob"
     }
 
     "formatExpenseConfirmation omits the split clause entirely when the payer is the only participant" {
@@ -102,7 +104,7 @@ class MessageFormattingSpec : StringSpec({
             shares = listOf(ExpenseShare(alice.id, BigDecimal("12.00"))),
         )
 
-        formatExpenseConfirmation(expense, members) shouldBe "Alice paid 12.00 USD for <b>solo lunch</b>"
+        formatExpenseConfirmation(expense, members) shouldBe "Expense added:\n\nAlice paid 12.00 USD for <b>solo lunch</b>"
     }
 
     "formatExpenseConfirmation fails loudly if the payer isn't in the members list" {
@@ -137,6 +139,7 @@ class MessageFormattingSpec : StringSpec({
         )
 
         formatExpenseList(listOf(expense), members) shouldBe
+            "Last 10 expenses:\n\n" +
             "<code>abcdef12</code>  2026-08-28  <b>dinner</b>  90.00 USD\n" +
             "paid by Alice, split equally: Alice 45.00 USD, Bob 45.00 USD"
     }
@@ -156,6 +159,7 @@ class MessageFormattingSpec : StringSpec({
         )
 
         formatExpenseList(listOf(expense), members) shouldBe
+            "Last 10 expenses:\n\n" +
             "<code>abcdef12</code>  2026-08-28  <b>rent</b>  90.00 USD\n" +
             "paid by Alice, split by exact amounts: Alice 50.00 USD, Bob 40.00 USD"
     }
@@ -175,6 +179,7 @@ class MessageFormattingSpec : StringSpec({
         )
 
         formatExpenseList(listOf(expense), members) shouldBe
+            "Last 10 expenses:\n\n" +
             "<code>abcdef12</code>  2026-08-28  <b>groceries</b>  90.00 USD\n" +
             "paid by Alice, split by shares: Alice 60.00 USD, Bob 30.00 USD"
     }
@@ -186,15 +191,15 @@ class MessageFormattingSpec : StringSpec({
     "formatBalances phrases payments relative to the viewer" {
         val payments = listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00")))
 
-        formatBalances(payments, members, viewerId = alice.id, currency = "USD") shouldBe "Bob owes you 30.00 USD"
-        formatBalances(payments, members, viewerId = bob.id, currency = "USD") shouldBe "You owe Alice 30.00 USD"
+        formatBalances(payments, members, viewerId = alice.id, currency = "USD") shouldBe "Balances:\n\nBob owes you 30.00 USD"
+        formatBalances(payments, members, viewerId = bob.id, currency = "USD") shouldBe "Balances:\n\nYou owe Alice 30.00 USD"
     }
 
     "formatBalances names a member by @username once one is known" {
         val payments = listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00")))
 
         formatBalances(payments, members, viewerId = alice.id, currency = "USD", usernames = mapOf(bob.id to "bobby")) shouldBe
-            "@bobby owes you 30.00 USD"
+            "Balances:\n\n@bobby owes you 30.00 USD"
     }
 
     "formatBalances says everyone's settled up when there's nothing relevant" {
@@ -210,7 +215,7 @@ class MessageFormattingSpec : StringSpec({
     "formatSettleSuggestions lists every payment" {
         val payments = listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00")))
 
-        formatSettleSuggestions(payments, members, currency = "USD") shouldBe "Bob pays Alice 30.00 USD"
+        formatSettleSuggestions(payments, members, currency = "USD") shouldBe "Suggested settlements:\n\nBob pays Alice 30.00 USD"
     }
 
     "formatSettleSuggestions names members by @username once known" {
@@ -219,7 +224,7 @@ class MessageFormattingSpec : StringSpec({
         formatSettleSuggestions(
             payments, members, currency = "USD",
             usernames = mapOf(bob.id to "bobby", alice.id to "alice_w"),
-        ) shouldBe "@bobby pays @alice_w 30.00 USD"
+        ) shouldBe "Suggested settlements:\n\n@bobby pays @alice_w 30.00 USD"
     }
 
     "formatSettleSuggestions says everyone's settled up when there's nothing to do" {

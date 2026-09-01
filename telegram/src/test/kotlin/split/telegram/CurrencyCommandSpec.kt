@@ -20,7 +20,7 @@ class CurrencyCommandSpec : StringSpec({
             command.handle(CommandContext(-100, MemberId("m1"), "1", groupId, "EUR"))
 
             groupRepository.find(groupId)!!.defaultCurrency shouldBe "EUR"
-            telegramApi.sentMessages shouldBe listOf(-100L to "This group's default currency is now EUR.")
+            telegramApi.sentMessages shouldBe listOf(-100L to "Currency updated:\n\nThis group's default currency is now EUR.")
         }
     }
 

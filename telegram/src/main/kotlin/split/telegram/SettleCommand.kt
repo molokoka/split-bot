@@ -53,6 +53,9 @@ class SettleCommand(
         }
 
         settlementRepository.create(settlement)
-        telegramApi.sendMessage(context.chatId, "Recorded: you paid ${formatAmount(settlement.amount, settlement.currency)}.")
+        telegramApi.sendMessage(
+            context.chatId,
+            "Settlement recorded:\n\nYou paid ${formatAmount(settlement.amount, settlement.currency)}.",
+        )
     }
 }

@@ -39,7 +39,7 @@ class DeleteExpenseCommand(
         expenseRepository.softDelete(expense.id, Instant.now(clock))
         telegramApi.sendMessage(
             context.chatId,
-            "Deleted \"${escapeHtml(expense.description)}\" (${formatAmount(expense.amount, expense.currency)}).",
+            "Expense deleted:\n\n\"${escapeHtml(expense.description)}\" (${formatAmount(expense.amount, expense.currency)}).",
         )
     }
 }

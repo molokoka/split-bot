@@ -50,7 +50,7 @@ fun formatExpenseConfirmation(
         .sortedBy { nameOf.getValue(it.memberId).displayName }
         .joinToString(", ") { mentionName(nameOf.getValue(it.memberId), usernames) }
 
-    return if (otherParticipants.isEmpty()) {
+    return "Expense added:\n\n" + if (otherParticipants.isEmpty()) {
         base
     } else {
         "$base, split ${splitTypeLabel(expense.splitType)} with $otherParticipants"
@@ -65,7 +65,12 @@ private fun splitTypeLabel(splitType: SplitType): String = when (splitType) {
 
 fun formatExpenseList(expenses: List<Expense>, members: List<Member>, usernames: Map<MemberId, String> = emptyMap()): String {
     if (expenses.isEmpty()) return "No expenses yet — use /add to log one."
-    return expenses.joinToString("\n\n") { formatExpenseListLine(it, members, usernames) }
+    // Blank line between entries, since a wall of unbroken lines is hard to scan in Telegram.
+    // Header names the 10-expense cap ListCommand applies, so it's not a mystery why an
+    // older expense might be missing from the list. Plain text, not bold — a bold title
+    // read as more visually important than the bold expense descriptions right below it.
+    return "Last 10 expenses:\n\n" +
+        expenses.joinToString("\n\n") { formatExpenseListLine(it, members, usernames) }
 }
 
 // Deliberately its own format rather than reusing formatExpenseConfirmation: /list is an
@@ -100,7 +105,7 @@ fun formatBalances(
     val relevant = payments.filter { it.from == viewerId || it.to == viewerId }
     if (relevant.isEmpty()) return "You're all settled up!"
 
-    return relevant.joinToString("\n") { payment ->
+    return "Balances:\n\n" + relevant.joinToString("\n") { payment ->
         val amount = formatAmount(payment.amount, currency)
         if (payment.from == viewerId) {
             "You owe ${mentionName(nameOf.getValue(payment.to), usernames)} $amount"
@@ -118,7 +123,7 @@ fun formatSettleSuggestions(
 ): String {
     if (payments.isEmpty()) return "Everyone's settled up — nothing to do!"
     val nameOf = members.associateBy { it.id }
-    return payments.joinToString("\n") { payment ->
+    return "Suggested settlements:\n\n" + payments.joinToString("\n") { payment ->
         val from = mentionName(nameOf.getValue(payment.from), usernames)
         val to = mentionName(nameOf.getValue(payment.to), usernames)
         "$from pays $to ${formatAmount(payment.amount, currency)}"

@@ -52,7 +52,7 @@ class SettleCommandSpec : StringSpec({
             // even though a settlement was created — exactly the bug this test guards against.
             val settlement = settlementRepository.listActive(groupId, "EUR").single()
             settlement.currency shouldBe "EUR"
-            telegramApi.sentMessages.single().second shouldBe "Recorded: you paid 20.00 EUR."
+            telegramApi.sentMessages.single().second shouldBe "Settlement recorded:\n\nYou paid 20.00 EUR."
         }
     }
 

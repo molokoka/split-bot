@@ -51,7 +51,7 @@ class SettleSuggestCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(-100L to "@bob pays @alice 30.00 USD")
+            telegramApi.sentMessages shouldBe listOf(-100L to "Suggested settlements:\n\n@bob pays @alice 30.00 USD")
         }
     }
 
@@ -139,7 +139,7 @@ class SettleSuggestCommandSpec : StringSpec({
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(
-                -100L to "@carol pays @alice 10.00 USD\n@carol pays @bob 10.00 USD",
+                -100L to "Suggested settlements:\n\n@carol pays @alice 10.00 USD\n@carol pays @bob 10.00 USD",
             )
         }
     }

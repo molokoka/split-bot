@@ -38,7 +38,7 @@ class MembersCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, memberId, "1", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(-100L to "• Alice")
+            telegramApi.sentMessages shouldBe listOf(-100L to "Members:\n\n• Alice")
         }
     }
 
@@ -56,7 +56,7 @@ class MembersCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, memberId, "1", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(-100L to "• @alice_w")
+            telegramApi.sentMessages shouldBe listOf(-100L to "Members:\n\n• @alice_w")
         }
     }
 })

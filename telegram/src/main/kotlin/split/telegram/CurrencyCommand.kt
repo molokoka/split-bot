@@ -13,6 +13,6 @@ class CurrencyCommand(
             return
         }
         groupRepository.updateCurrency(context.groupId, code)
-        telegramApi.sendMessage(context.chatId, "This group's default currency is now $code.")
+        telegramApi.sendMessage(context.chatId, "Currency updated:\n\nThis group's default currency is now $code.")
     }
 }

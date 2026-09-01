@@ -44,7 +44,7 @@ class DeleteExpenseCommandSpec : StringSpec({
             command.handle(CommandContext(-100, aliceId, "1", groupId, "abcdef12"))
 
             expenseRepository.listActive(groupId, "USD") shouldBe emptyList()
-            telegramApi.sentMessages shouldBe listOf(-100L to "Deleted \"dinner\" (90.00 USD).")
+            telegramApi.sentMessages shouldBe listOf(-100L to "Expense deleted:\n\n\"dinner\" (90.00 USD).")
         }
     }
 

@@ -65,7 +65,8 @@ class ListCommandSpec : StringSpec({
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(
-                -100L to "<code>newer123</code>  2026-08-28  <b>dinner</b>  20.00 USD\n" +
+                -100L to "Last 10 expenses:\n\n" +
+                    "<code>newer123</code>  2026-08-28  <b>dinner</b>  20.00 USD\n" +
                     "paid by @bobby, split equally: @alice 10.00 USD, @bobby 10.00 USD\n\n" +
                     "<code>older123</code>  2026-08-27  <b>lunch</b>  10.00 USD\n" +
                     "paid by @alice, split equally: @alice 10.00 USD",
@@ -121,7 +122,8 @@ class ListCommandSpec : StringSpec({
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(
-                -100L to "<code>bbbb1234</code>  2026-08-29  <b>utilities</b>  90.00 USD\n" +
+                -100L to "Last 10 expenses:\n\n" +
+                    "<code>bbbb1234</code>  2026-08-29  <b>utilities</b>  90.00 USD\n" +
                     "paid by @bobby, split by shares: @alice 30.00 USD, @bobby 60.00 USD\n\n" +
                     "<code>aaaa1234</code>  2026-08-28  <b>rent</b>  100.00 USD\n" +
                     "paid by @alice, split by exact amounts: @alice 60.00 USD, @bobby 40.00 USD",
@@ -161,7 +163,8 @@ class ListCommandSpec : StringSpec({
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(
-                -100L to "<code>aaaa1234</code>  2026-08-28  <b>coffee</b>  5.00 USD\n" +
+                -100L to "Last 10 expenses:\n\n" +
+                    "<code>aaaa1234</code>  2026-08-28  <b>coffee</b>  5.00 USD\n" +
                     "paid by Alice, split equally: Alice 5.00 USD",
             )
         }
