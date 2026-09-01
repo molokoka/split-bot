@@ -27,11 +27,11 @@ private val currencyCodePattern = Regex("^[A-Z]{3}$")
 
 fun parseAddArgs(args: String, defaultCurrency: String): AddExpenseArgs {
     val mentions = extractMentions(args)
-    require(mentions.isNotEmpty()) { "Mention at least one participant, e.g. /add 90 dinner @alice @bob" }
+    require(mentions.isNotEmpty()) { "Mention at least one participant, e.g. /add 90 dinner <code>@alice</code> <code>@bob</code>" }
 
     val withoutMentions = mentionPattern.replace(args, "").trim().replace(Regex("\\s+"), " ")
     val parts = withoutMentions.split(" ", limit = 2)
-    require(parts.size == 2) { "Usage: /add <code>amount</code> [<code>currency</code>] <code>description</code> @mentions..." }
+    require(parts.size == 2) { "Usage: /add <code>amount</code> [<code>currency</code>] <code>description</code> <code>@mentions...</code>" }
 
     val amount = BigDecimal(parts[0])
     val rest = parts[1]
@@ -48,8 +48,8 @@ data class SettleArgs(val counterpartyUsername: String, val amount: BigDecimal)
 
 fun parseSettleArgs(args: String): SettleArgs {
     val mentions = extractMentions(args)
-    require(mentions.size == 1) { "Usage: /settle @person <code>amount</code>" }
+    require(mentions.size == 1) { "Usage: /settle <code>@person</code> <code>amount</code>" }
     val withoutMention = mentionPattern.replace(args, "").trim()
-    require(withoutMention.isNotEmpty()) { "Usage: /settle @person <code>amount</code>" }
+    require(withoutMention.isNotEmpty()) { "Usage: /settle <code>@person</code> <code>amount</code>" }
     return SettleArgs(mentions[0], BigDecimal(withoutMention))
 }
