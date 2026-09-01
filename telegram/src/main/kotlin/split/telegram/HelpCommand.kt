@@ -4,9 +4,9 @@ package split.telegram
 // rather than bare <angle brackets> — a raw "<amount>" would be read as an (invalid,
 // unclosed) HTML tag and mangle or break the message.
 internal const val HELP_TEXT = """Commands:
-/add <code>amount</code> [CURRENCY] <code>description</code> @mentions... — log an expense you paid, split equally
+/add <code>amount</code> [<code>currency</code>] <code>description</code> @mentions... — log an expense you paid, split equally
 /members — list who I recognize in this group
-/currency <code>currency_code</code> — set this group's default currency
+/currency <code>currency</code> — set this group's default currency
 /balances — see who owes you and who you owe
 /list — last 10 expenses
 /delete <code>id</code> — remove an expense (payer or admin only)

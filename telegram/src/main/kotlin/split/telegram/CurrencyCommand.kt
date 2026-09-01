@@ -9,7 +9,7 @@ class CurrencyCommand(
     suspend fun handle(context: CommandContext) {
         val code = context.args.trim().uppercase()
         if (!Regex("^[A-Z]{3}$").matches(code)) {
-            telegramApi.sendMessage(context.chatId, "Usage: /currency <code>3-letter code</code>, e.g. /currency EUR")
+            telegramApi.sendMessage(context.chatId, "Usage: /currency <code>currency</code>, e.g. /currency EUR")
             return
         }
         groupRepository.updateCurrency(context.groupId, code)
