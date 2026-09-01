@@ -3,7 +3,6 @@ package split.telegram
 internal const val HELP_TEXT = """Commands:
 /add <amount> [CURRENCY] <description> @mentions... — log an expense you paid, split equally
 /members — list who I recognize in this group
-/members add <name> — add someone without Telegram to split with
 /currency <code> — set this group's default currency
 /balances — see who owes you and who you owe
 /list — last 10 expenses

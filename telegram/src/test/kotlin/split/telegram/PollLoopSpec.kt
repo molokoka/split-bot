@@ -58,4 +58,22 @@ class PollLoopSpec : StringSpec({
             telegramApi.sentMessages shouldBe listOf(-1L to HELP_TEXT)
         }
     }
+
+    "a getUpdates failure doesn't crash the loop, and the next poll can still succeed" {
+        withTestDatabase { db ->
+            val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), ExposedGroupRepository(db))
+            val telegramApi = FakeTelegramApi()
+            val router = CommandRouter(resolver, mapOf("help" to HelpCommand(telegramApi)::handle))
+            val pollLoop = PollLoop(telegramApi, router)
+
+            telegramApi.getUpdatesException = RuntimeException("simulated network failure")
+            pollLoop.pollOnce() // must not throw
+
+            telegramApi.getUpdatesException = null
+            telegramApi.updatesToReturn = listOf(anUpdate(1, "/help"))
+            pollLoop.pollOnce()
+
+            telegramApi.sentMessages shouldBe listOf(-1L to HELP_TEXT)
+        }
+    }
 })

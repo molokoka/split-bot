@@ -4,6 +4,7 @@ import split.core.DebtPayment
 import split.core.Expense
 import split.core.Member
 import split.core.MemberId
+import split.core.SplitType
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -13,16 +14,37 @@ fun formatAmount(amount: BigDecimal, currency: String): String =
 fun formatExpenseConfirmation(expense: Expense, members: List<Member>): String {
     val nameOf = members.associateBy { it.id }
     val payerName = nameOf.getValue(expense.payerId).displayName
-    val participantNames = expense.shares.joinToString(", ") { nameOf.getValue(it.memberId).displayName }
-    return "$payerName paid ${formatAmount(expense.amount, expense.currency)} for ${expense.description}, " +
-        "split with $participantNames"
+    val base = "$payerName paid ${formatAmount(expense.amount, expense.currency)} for ${expense.description}"
+
+    // The payer is dropped from this list — they're already named as the payer, so
+    // repeating them in "split with" reads as if they split the expense with themselves.
+    // Sorted by name rather than left in expense.shares' order: that order reflects
+    // incidental database row order on read (member_id happens to sort the rows), not
+    // anything meaningful, so leaving it unsorted would show participants in a different,
+    // effectively random order every time the same expense is displayed.
+    val otherParticipants = expense.shares
+        .filter { it.memberId != expense.payerId }
+        .sortedBy { nameOf.getValue(it.memberId).displayName }
+        .joinToString(", ") { nameOf.getValue(it.memberId).displayName }
+
+    return if (otherParticipants.isEmpty()) {
+        base
+    } else {
+        "$base, split ${splitTypeLabel(expense.splitType)} with $otherParticipants"
+    }
 }
 
-fun formatExpenseList(expenses: List<Expense>): String {
+private fun splitTypeLabel(splitType: SplitType): String = when (splitType) {
+    SplitType.EQUAL -> "equally"
+    SplitType.EXACT -> "by exact amounts"
+    SplitType.SHARES -> "by shares"
+}
+
+fun formatExpenseList(expenses: List<Expense>, members: List<Member>): String {
     if (expenses.isEmpty()) return "No expenses yet — use /add to log one."
     return expenses.joinToString("\n") { expense ->
         val shortId = expense.id.value.take(8)
-        "[$shortId] ${expense.description} — ${formatAmount(expense.amount, expense.currency)}"
+        "[$shortId] ${formatExpenseConfirmation(expense, members)}"
     }
 }
 

@@ -4,3 +4,5 @@ build/
 local.properties
 gradle/gradle-daemon-jvm.properties
 .idea/
+.env
+split-manual-test.db*

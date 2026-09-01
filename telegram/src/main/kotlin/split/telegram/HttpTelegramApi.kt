@@ -3,6 +3,7 @@ package split.telegram
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.http.*
@@ -16,6 +17,9 @@ class HttpTelegramApi(
         install(ContentNegotiation) {
             json(Json { ignoreUnknownKeys = true })
         }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 30_000
+        }
     },
 ) : TelegramApi {
 
@@ -24,7 +28,11 @@ class HttpTelegramApi(
             append("timeout=$timeoutSeconds")
             if (offset != null) append("&offset=$offset")
         }
-        val response: GetUpdatesResponse = httpClient.get("$baseUrl/bot$botToken/getUpdates?$query").body()
+        // Telegram holds this connection open for up to timeoutSeconds waiting for updates,
+        // so the client-side timeout must comfortably exceed it or every long poll aborts.
+        val response: GetUpdatesResponse = httpClient.get("$baseUrl/bot$botToken/getUpdates?$query") {
+            timeout { requestTimeoutMillis = (timeoutSeconds * 1000L) + 10_000 }
+        }.body()
         return response.result
     }
 

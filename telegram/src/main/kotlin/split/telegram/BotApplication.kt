@@ -14,7 +14,12 @@ class PollLoop(
     private var offset: Long? = null
 
     suspend fun pollOnce(timeoutSeconds: Int = 30) {
-        val updates = telegramApi.getUpdates(offset, timeoutSeconds)
+        val updates = try {
+            telegramApi.getUpdates(offset, timeoutSeconds)
+        } catch (e: Exception) {
+            System.err.println("Error fetching updates: ${e.message}")
+            emptyList()
+        }
         for (update in updates) {
             try {
                 router.handleUpdate(update)
@@ -44,12 +49,12 @@ suspend fun main() {
         "start" to StartCommand(telegramApi)::handle,
         "help" to HelpCommand(telegramApi)::handle,
         "currency" to CurrencyCommand(groupRepository, telegramApi)::handle,
-        "members" to MembersCommand(memberRepository, groupRepository, telegramApi)::handle,
+        "members" to MembersCommand(memberRepository, telegramApi)::handle,
         "add" to AddExpenseCommand(
             platformDirectory, groupRepository, memberRepository, expenseRepository, identityResolver, telegramApi,
         )::handle,
         "delete" to DeleteExpenseCommand(groupRepository, expenseRepository, telegramApi)::handle,
-        "list" to ListCommand(groupRepository, expenseRepository, telegramApi)::handle,
+        "list" to ListCommand(groupRepository, memberRepository, expenseRepository, telegramApi)::handle,
         "balances" to BalancesCommand(
             groupRepository, memberRepository, expenseRepository, settlementRepository, telegramApi,
         )::handle,

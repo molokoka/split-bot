@@ -27,6 +27,7 @@
 ## Out of scope for this plan
 
 - Inline-keyboard flows: the button-based participant picker for `/add` with no mentions, "+ Add someone new" button, and the "Change split" (Exact/Shares) follow-up — `/add` in this plan requires explicit `@mentions`. A follow-up plan should add `TgCallbackQuery` handling, `answerCallbackQuery`/`editMessageText` to `TelegramApi`, and the picker/keyboard UI.
+- `/members add <name>` (placeholder members with no Telegram identity) — implemented in Task 8, then removed after manual testing showed it was a dead end without the button-picker above: mention-based `/add` has no way to `@mention` someone with no `PlatformIdentity` row, so a placeholder member could be registered but never actually included in an expense. Revisit alongside the picker flow.
 - Multi-currency `/balances` and `/list` ("one block per currency if the group has more than one") — this plan scopes both to the group's single `defaultCurrency`. Supporting more needs a new repository query (e.g. `ExpenseRepository.listCurrencies(groupId)`) that doesn't exist yet.
 - Deployment (EC2/systemd) — covered by the persistence spec's "Deployment" section, not adapter code.
 - WhatsApp, receipt OCR, natural-language entry, editing an existing expense — already out of scope per the bot design doc.
@@ -1118,7 +1119,6 @@ package split.telegram
 internal const val HELP_TEXT = """Commands:
 /add <amount> [CURRENCY] <description> @mentions... — log an expense you paid, split equally
 /members — list who I recognize in this group
-/members add <name> — add someone without Telegram to split with
 /currency <code> — set this group's default currency
 /balances — see who owes you and who you owe
 /list — last 10 expenses
@@ -1260,15 +1260,17 @@ git commit -m "Add /currency command"
 
 ---
 
-### Task 8: `/members` and `/members add` commands
+### Task 8: `/members` command
 
 **Files:**
 - Create: `telegram/src/main/kotlin/split/telegram/MembersCommand.kt`
 - Test: `telegram/src/test/kotlin/split/telegram/MembersCommandSpec.kt`
 
 **Interfaces:**
-- Consumes: `MemberRepository`, `GroupRepository` (`core`), `CommandContext`, `TelegramApi`, `IdentityResolver`.
-- Produces: `class MembersCommand(memberRepository: MemberRepository, groupRepository: GroupRepository, telegramApi: TelegramApi) { suspend fun handle(context: CommandContext) }`.
+- Consumes: `MemberRepository` (`core`), `CommandContext`, `TelegramApi`.
+- Produces: `class MembersCommand(memberRepository: MemberRepository, telegramApi: TelegramApi) { suspend fun handle(context: CommandContext) }`.
+
+Note: `/members add <name>` (placeholder members with no Telegram identity) was implemented, then removed after manual live-bot testing — mention-based `/add` (this plan's only `/add` flow) can never include a placeholder member, since there's no `@username` to mention for someone with no `PlatformIdentity` row. That made `/members add` a dead end: you could register a placeholder, but never actually split an expense with them. Placeholder members only become usable once the button-based participant picker ships (see "Out of scope"), so `/members add` is deferred alongside it rather than shipped as a trap. `/members` itself (listing) stays.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1279,6 +1281,7 @@ package split.telegram
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import split.core.MemberId
 import split.storage.ExposedGroupRepository
 import split.storage.ExposedMemberRepository
 import split.storage.ExposedPlatformDirectory
@@ -1289,11 +1292,11 @@ class MembersCommandSpec : StringSpec({
         withTestDatabase { db ->
             val groupRepository = ExposedGroupRepository(db)
             val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)
-            val groupId = resolver.resolveGroup("-100")
+            val groupId = resolver.resolveGroup("-100001")
             val telegramApi = FakeTelegramApi()
-            val command = MembersCommand(ExposedMemberRepository(db), groupRepository, telegramApi)
+            val command = MembersCommand(ExposedMemberRepository(db), telegramApi)
 
-            command.handle(CommandContext(-100, split.core.MemberId("m1"), "1", groupId, ""))
+            command.handle(CommandContext(-100, MemberId("m1"), "1", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(-100L to "No members yet.")
         }
@@ -1305,30 +1308,14 @@ class MembersCommandSpec : StringSpec({
             val memberRepository = ExposedMemberRepository(db)
             val resolver = IdentityResolver(ExposedPlatformDirectory(db), memberRepository, groupRepository)
             val memberId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100")
+            val groupId = resolver.resolveGroup("-100001")
             resolver.ensureGroupMembership(groupId, memberId)
             val telegramApi = FakeTelegramApi()
-            val command = MembersCommand(memberRepository, groupRepository, telegramApi)
+            val command = MembersCommand(memberRepository, telegramApi)
 
             command.handle(CommandContext(-100, memberId, "1", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(-100L to "• Alice")
-        }
-    }
-
-    "adds a placeholder member with /members add" {
-        withTestDatabase { db ->
-            val groupRepository = ExposedGroupRepository(db)
-            val memberRepository = ExposedMemberRepository(db)
-            val resolver = IdentityResolver(ExposedPlatformDirectory(db), memberRepository, groupRepository)
-            val groupId = resolver.resolveGroup("-100")
-            val telegramApi = FakeTelegramApi()
-            val command = MembersCommand(memberRepository, groupRepository, telegramApi)
-
-            command.handle(CommandContext(-100, split.core.MemberId("m1"), "1", groupId, "add Charlie"))
-
-            memberRepository.findByGroup(groupId).map { it.displayName } shouldBe listOf("Charlie")
-            telegramApi.sentMessages shouldBe listOf(-100L to "Added Charlie to this group.")
         }
     }
 })
@@ -1346,33 +1333,14 @@ Create `telegram/src/main/kotlin/split/telegram/MembersCommand.kt`:
 ```kotlin
 package split.telegram
 
-import split.core.GroupRepository
 import split.core.Member
-import split.core.MemberId
 import split.core.MemberRepository
-import java.util.UUID
 
 class MembersCommand(
     private val memberRepository: MemberRepository,
-    private val groupRepository: GroupRepository,
     private val telegramApi: TelegramApi,
-    private val idGenerator: () -> String = { UUID.randomUUID().toString() },
 ) {
     suspend fun handle(context: CommandContext) {
-        val trimmed = context.args.trim()
-        if (trimmed.startsWith("add ")) {
-            val name = trimmed.removePrefix("add ").trim()
-            if (name.isEmpty()) {
-                telegramApi.sendMessage(context.chatId, "Usage: /members add <name>")
-                return
-            }
-            val member = Member(MemberId(idGenerator()), name)
-            memberRepository.create(member)
-            groupRepository.addMember(context.groupId, member.id)
-            telegramApi.sendMessage(context.chatId, "Added $name to this group.")
-            return
-        }
-
         val members = memberRepository.findByGroup(context.groupId)
         telegramApi.sendMessage(context.chatId, formatMembers(members))
     }
@@ -1387,14 +1355,14 @@ internal fun formatMembers(members: List<Member>): String {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `./gradlew :telegram:test --tests "split.telegram.MembersCommandSpec"`
-Expected: `BUILD SUCCESSFUL`, 3 tests pass.
+Expected: `BUILD SUCCESSFUL`, 2 tests pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add telegram/src/main/kotlin/split/telegram/MembersCommand.kt \
         telegram/src/test/kotlin/split/telegram/MembersCommandSpec.kt
-git commit -m "Add /members and /members add commands"
+git commit -m "Add /members command"
 ```
 
 ---
@@ -1409,7 +1377,7 @@ Pure functions — no repositories, no Telegram API — kept separate from `Memb
 
 **Interfaces:**
 - Consumes: `Expense`, `Member`, `MemberId`, `DebtPayment` (`core`).
-- Produces: `fun formatAmount(amount: BigDecimal, currency: String): String`, `fun formatExpenseConfirmation(expense: Expense, members: List<Member>): String`, `fun formatExpenseList(expenses: List<Expense>): String`, `fun formatBalances(payments: List<DebtPayment>, members: List<Member>, viewerId: MemberId, currency: String): String`, `fun formatSettleSuggestions(payments: List<DebtPayment>, members: List<Member>, currency: String): String` — consumed by Tasks 10–15. Note `currency` is a separate parameter on `formatBalances`/`formatSettleSuggestions` because `DebtPayment` (from `core`'s `simplifyDebts`) doesn't carry a currency field — callers already have it in scope from the `(group, currency)` they computed balances for. `formatExpenseConfirmation`/`formatExpenseList` don't need it as a parameter since `Expense` already carries its own `currency`.
+- Produces: `fun formatAmount(amount: BigDecimal, currency: String): String`, `fun formatExpenseConfirmation(expense: Expense, members: List<Member>): String`, `fun formatExpenseList(expenses: List<Expense>, members: List<Member>): String`, `fun formatBalances(payments: List<DebtPayment>, members: List<Member>, viewerId: MemberId, currency: String): String`, `fun formatSettleSuggestions(payments: List<DebtPayment>, members: List<Member>, currency: String): String` — consumed by Tasks 10–15. Note `currency` is a separate parameter on `formatBalances`/`formatSettleSuggestions` because `DebtPayment` (from `core`'s `simplifyDebts`) doesn't carry a currency field — callers already have it in scope from the `(group, currency)` they computed balances for. `formatExpenseConfirmation`/`formatExpenseList` don't need it as a parameter since `Expense` already carries its own `currency`. `formatExpenseList` takes `members` (added during review, alongside Task 12) so each line shows who paid and who participated, not just the amount.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1443,7 +1411,7 @@ class MessageFormattingSpec : StringSpec({
         formatAmount(BigDecimal("12.5"), "EUR") shouldBe "12.50 EUR"
     }
 
-    "formatExpenseConfirmation names payer, amount, and currency" {
+    "formatExpenseConfirmation names payer, amount, currency, and split type, without repeating the payer" {
         val expense = Expense(
             id = ExpenseId("e1"),
             groupId = GroupId("g1"),
@@ -1457,7 +1425,43 @@ class MessageFormattingSpec : StringSpec({
             shares = listOf(ExpenseShare(alice.id, BigDecimal("45.00")), ExpenseShare(bob.id, BigDecimal("45.00"))),
         )
 
-        formatExpenseConfirmation(expense, members) shouldBe "Alice paid 90.00 EUR for dinner, split with Alice, Bob"
+        formatExpenseConfirmation(expense, members) shouldBe "Alice paid 90.00 EUR for dinner, split equally with Bob"
+    }
+
+    "formatExpenseConfirmation names the split type for EXACT and SHARES splits too" {
+        val exact = Expense(
+            id = ExpenseId("e1"),
+            groupId = GroupId("g1"),
+            currency = "USD",
+            description = "dinner",
+            amount = BigDecimal("90.00"),
+            payerId = alice.id,
+            splitType = SplitType.EXACT,
+            createdBy = alice.id,
+            createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+            shares = listOf(ExpenseShare(alice.id, BigDecimal("50.00")), ExpenseShare(bob.id, BigDecimal("40.00"))),
+        )
+        val shares = exact.copy(splitType = SplitType.SHARES)
+
+        formatExpenseConfirmation(exact, members) shouldBe "Alice paid 90.00 USD for dinner, split by exact amounts with Bob"
+        formatExpenseConfirmation(shares, members) shouldBe "Alice paid 90.00 USD for dinner, split by shares with Bob"
+    }
+
+    "formatExpenseConfirmation omits the split clause entirely when the payer is the only participant" {
+        val expense = Expense(
+            id = ExpenseId("e1"),
+            groupId = GroupId("g1"),
+            currency = "USD",
+            description = "solo lunch",
+            amount = BigDecimal("12.00"),
+            payerId = alice.id,
+            splitType = SplitType.EQUAL,
+            createdBy = alice.id,
+            createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+            shares = listOf(ExpenseShare(alice.id, BigDecimal("12.00"))),
+        )
+
+        formatExpenseConfirmation(expense, members) shouldBe "Alice paid 12.00 USD for solo lunch"
     }
 
     "formatExpenseConfirmation fails loudly if the payer isn't in the members list" {
@@ -1477,7 +1481,7 @@ class MessageFormattingSpec : StringSpec({
         shouldThrow<NoSuchElementException> { formatExpenseConfirmation(expense, members) }
     }
 
-    "formatExpenseList shows a short id, description, and amount per line" {
+    "formatExpenseList shows a short id plus who paid and who participated per line" {
         val expense = Expense(
             id = ExpenseId("abcdef1234567890"),
             groupId = GroupId("g1"),
@@ -1488,14 +1492,15 @@ class MessageFormattingSpec : StringSpec({
             splitType = SplitType.EQUAL,
             createdBy = alice.id,
             createdAt = Instant.parse("2026-08-28T00:00:00Z"),
-            shares = emptyList(),
+            shares = listOf(ExpenseShare(alice.id, BigDecimal("45.00")), ExpenseShare(bob.id, BigDecimal("45.00"))),
         )
 
-        formatExpenseList(listOf(expense)) shouldBe "[abcdef12] dinner — 90.00 USD"
+        formatExpenseList(listOf(expense), members) shouldBe
+            "[abcdef12] Alice paid 90.00 USD for dinner, split equally with Bob"
     }
 
     "formatExpenseList explains there's nothing yet" {
-        formatExpenseList(emptyList()) shouldBe "No expenses yet — use /add to log one."
+        formatExpenseList(emptyList(), members) shouldBe "No expenses yet — use /add to log one."
     }
 
     "formatBalances phrases payments relative to the viewer" {
@@ -1543,6 +1548,7 @@ import split.core.DebtPayment
 import split.core.Expense
 import split.core.Member
 import split.core.MemberId
+import split.core.SplitType
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -1552,16 +1558,37 @@ fun formatAmount(amount: BigDecimal, currency: String): String =
 fun formatExpenseConfirmation(expense: Expense, members: List<Member>): String {
     val nameOf = members.associateBy { it.id }
     val payerName = nameOf.getValue(expense.payerId).displayName
-    val participantNames = expense.shares.joinToString(", ") { nameOf.getValue(it.memberId).displayName }
-    return "$payerName paid ${formatAmount(expense.amount, expense.currency)} for ${expense.description}, " +
-        "split with $participantNames"
+    val base = "$payerName paid ${formatAmount(expense.amount, expense.currency)} for ${expense.description}"
+
+    // The payer is dropped from this list — they're already named as the payer, so
+    // repeating them in "split with" reads as if they split the expense with themselves.
+    // Sorted by name rather than left in expense.shares' order: that order reflects
+    // incidental database row order on read (member_id happens to sort the rows), not
+    // anything meaningful, so leaving it unsorted would show participants in a different,
+    // effectively random order every time the same expense is displayed.
+    val otherParticipants = expense.shares
+        .filter { it.memberId != expense.payerId }
+        .sortedBy { nameOf.getValue(it.memberId).displayName }
+        .joinToString(", ") { nameOf.getValue(it.memberId).displayName }
+
+    return if (otherParticipants.isEmpty()) {
+        base
+    } else {
+        "$base, split ${splitTypeLabel(expense.splitType)} with $otherParticipants"
+    }
 }
 
-fun formatExpenseList(expenses: List<Expense>): String {
+private fun splitTypeLabel(splitType: SplitType): String = when (splitType) {
+    SplitType.EQUAL -> "equally"
+    SplitType.EXACT -> "by exact amounts"
+    SplitType.SHARES -> "by shares"
+}
+
+fun formatExpenseList(expenses: List<Expense>, members: List<Member>): String {
     if (expenses.isEmpty()) return "No expenses yet — use /add to log one."
     return expenses.joinToString("\n") { expense ->
         val shortId = expense.id.value.take(8)
-        "[$shortId] ${expense.description} — ${formatAmount(expense.amount, expense.currency)}"
+        "[$shortId] ${formatExpenseConfirmation(expense, members)}"
     }
 }
 
@@ -1596,7 +1623,7 @@ Note: `nameOf.getValue(id)` (not `nameOf[id] ?: "someone"`) is deliberate — a 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `./gradlew :telegram:test --tests "split.telegram.MessageFormattingSpec"`
-Expected: `BUILD SUCCESSFUL`, 10 tests pass.
+Expected: `BUILD SUCCESSFUL`, 12 tests pass.
 
 - [ ] **Step 5: Commit**
 
@@ -2100,8 +2127,10 @@ git commit -m "Add /delete command"
 - Test: `telegram/src/test/kotlin/split/telegram/ListCommandSpec.kt`
 
 **Interfaces:**
-- Consumes: `GroupRepository`, `ExpenseRepository` (`core`); `formatExpenseList` (Task 9).
-- Produces: `class ListCommand(groupRepository: GroupRepository, expenseRepository: ExpenseRepository, telegramApi: TelegramApi) { suspend fun handle(context: CommandContext) }`.
+- Consumes: `GroupRepository`, `MemberRepository`, `ExpenseRepository` (`core`); `formatExpenseList` (Task 9).
+- Produces: `class ListCommand(groupRepository: GroupRepository, memberRepository: MemberRepository, expenseRepository: ExpenseRepository, telegramApi: TelegramApi) { suspend fun handle(context: CommandContext) }`.
+
+Note: `memberRepository` was added during review — manual testing showed a bare `[id] description — amount` line per expense wasn't useful without knowing who paid and who was in on it, so `ListCommand` now fetches the group's members and reuses `formatExpenseConfirmation`'s payer/participant formatting per line (see Task 9's updated `formatExpenseList` signature).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2125,37 +2154,57 @@ import split.storage.ExposedPlatformDirectory
 
 class ListCommandSpec : StringSpec({
 
-    "lists active expenses newest first, capped at 10" {
+    "lists active expenses newest first, capped at 10, with who paid and who participated" {
         withTestDatabase { db ->
             val groupRepository = ExposedGroupRepository(db)
+            val memberRepository = ExposedMemberRepository(db)
             val expenseRepository = ExposedExpenseRepository(db)
-            val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)
+            val resolver = IdentityResolver(ExposedPlatformDirectory(db), memberRepository, groupRepository)
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
             val groupId = resolver.resolveGroup("-100001")
+            resolver.ensureGroupMembership(groupId, aliceId)
+            resolver.ensureGroupMembership(groupId, bobbyId)
 
-            fun expense(id: String, at: String) = Expense(
-                id = ExpenseId(id),
-                groupId = groupId,
-                currency = "USD",
-                description = id,
-                amount = BigDecimal("10.00"),
-                payerId = aliceId,
-                splitType = SplitType.EQUAL,
-                createdBy = aliceId,
-                createdAt = Instant.parse(at),
-                shares = listOf(ExpenseShare(aliceId, BigDecimal("10.00"))),
+            // ids are unrelated to their descriptions on purpose, to make it obvious in the
+            // expected output below which part is the 8-char id prefix vs. the description
+            expenseRepository.create(
+                Expense(
+                    id = ExpenseId("older1234567890"),
+                    groupId = groupId,
+                    currency = "USD",
+                    description = "lunch",
+                    amount = BigDecimal("10.00"),
+                    payerId = aliceId,
+                    splitType = SplitType.EQUAL,
+                    createdBy = aliceId,
+                    createdAt = Instant.parse("2026-08-27T00:00:00Z"),
+                    shares = listOf(ExpenseShare(aliceId, BigDecimal("10.00"))),
+                ),
+            )
+            expenseRepository.create(
+                Expense(
+                    id = ExpenseId("newer1234567890"),
+                    groupId = groupId,
+                    currency = "USD",
+                    description = "dinner",
+                    amount = BigDecimal("20.00"),
+                    payerId = bobbyId,
+                    splitType = SplitType.EQUAL,
+                    createdBy = bobbyId,
+                    createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+                    shares = listOf(ExpenseShare(aliceId, BigDecimal("10.00")), ExpenseShare(bobbyId, BigDecimal("10.00"))),
+                ),
             )
 
-            expenseRepository.create(expense("older12345", "2026-08-27T00:00:00Z"))
-            expenseRepository.create(expense("newer12345", "2026-08-28T00:00:00Z"))
-
             val telegramApi = FakeTelegramApi()
-            val command = ListCommand(groupRepository, expenseRepository, telegramApi)
+            val command = ListCommand(groupRepository, memberRepository, expenseRepository, telegramApi)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(
-                -100L to "[newer123] newer12345 — 10.00 USD\n[older123] older12345 — 10.00 USD",
+                -100L to "[newer123] Bob paid 20.00 USD for dinner, split equally with Alice\n" +
+                    "[older123] Alice paid 10.00 USD for lunch",
             )
         }
     }
@@ -2163,13 +2212,14 @@ class ListCommandSpec : StringSpec({
     "explains there's nothing yet" {
         withTestDatabase { db ->
             val groupRepository = ExposedGroupRepository(db)
+            val memberRepository = ExposedMemberRepository(db)
             val expenseRepository = ExposedExpenseRepository(db)
-            val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)
+            val resolver = IdentityResolver(ExposedPlatformDirectory(db), memberRepository, groupRepository)
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
             val groupId = resolver.resolveGroup("-100001")
 
             val telegramApi = FakeTelegramApi()
-            val command = ListCommand(groupRepository, expenseRepository, telegramApi)
+            val command = ListCommand(groupRepository, memberRepository, expenseRepository, telegramApi)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
@@ -2193,9 +2243,11 @@ package split.telegram
 
 import split.core.ExpenseRepository
 import split.core.GroupRepository
+import split.core.MemberRepository
 
 class ListCommand(
     private val groupRepository: GroupRepository,
+    private val memberRepository: MemberRepository,
     private val expenseRepository: ExpenseRepository,
     private val telegramApi: TelegramApi,
 ) {
@@ -2204,8 +2256,9 @@ class ListCommand(
         val expenses = expenseRepository.listActive(context.groupId, group.defaultCurrency)
             .sortedByDescending { it.createdAt }
             .take(10)
+        val members = memberRepository.findByGroup(context.groupId)
 
-        telegramApi.sendMessage(context.chatId, formatExpenseList(expenses))
+        telegramApi.sendMessage(context.chatId, formatExpenseList(expenses, members))
     }
 }
 ```
@@ -2947,12 +3000,12 @@ suspend fun main() {
         "start" to StartCommand(telegramApi)::handle,
         "help" to HelpCommand(telegramApi)::handle,
         "currency" to CurrencyCommand(groupRepository, telegramApi)::handle,
-        "members" to MembersCommand(memberRepository, groupRepository, telegramApi)::handle,
+        "members" to MembersCommand(memberRepository, telegramApi)::handle,
         "add" to AddExpenseCommand(
             platformDirectory, groupRepository, memberRepository, expenseRepository, identityResolver, telegramApi,
         )::handle,
         "delete" to DeleteExpenseCommand(groupRepository, expenseRepository, telegramApi)::handle,
-        "list" to ListCommand(groupRepository, expenseRepository, telegramApi)::handle,
+        "list" to ListCommand(groupRepository, memberRepository, expenseRepository, telegramApi)::handle,
         "balances" to BalancesCommand(
             groupRepository, memberRepository, expenseRepository, settlementRepository, telegramApi,
         )::handle,

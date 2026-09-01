@@ -25,7 +25,7 @@ class MessageFormattingSpec : StringSpec({
         formatAmount(BigDecimal("12.5"), "EUR") shouldBe "12.50 EUR"
     }
 
-    "formatExpenseConfirmation names payer, amount, and currency" {
+    "formatExpenseConfirmation names payer, amount, currency, and split type, without repeating the payer" {
         val expense = Expense(
             id = ExpenseId("e1"),
             groupId = GroupId("g1"),
@@ -39,7 +39,43 @@ class MessageFormattingSpec : StringSpec({
             shares = listOf(ExpenseShare(alice.id, BigDecimal("45.00")), ExpenseShare(bob.id, BigDecimal("45.00"))),
         )
 
-        formatExpenseConfirmation(expense, members) shouldBe "Alice paid 90.00 EUR for dinner, split with Alice, Bob"
+        formatExpenseConfirmation(expense, members) shouldBe "Alice paid 90.00 EUR for dinner, split equally with Bob"
+    }
+
+    "formatExpenseConfirmation names the split type for EXACT and SHARES splits too" {
+        val exact = Expense(
+            id = ExpenseId("e1"),
+            groupId = GroupId("g1"),
+            currency = "USD",
+            description = "dinner",
+            amount = BigDecimal("90.00"),
+            payerId = alice.id,
+            splitType = SplitType.EXACT,
+            createdBy = alice.id,
+            createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+            shares = listOf(ExpenseShare(alice.id, BigDecimal("50.00")), ExpenseShare(bob.id, BigDecimal("40.00"))),
+        )
+        val shares = exact.copy(splitType = SplitType.SHARES)
+
+        formatExpenseConfirmation(exact, members) shouldBe "Alice paid 90.00 USD for dinner, split by exact amounts with Bob"
+        formatExpenseConfirmation(shares, members) shouldBe "Alice paid 90.00 USD for dinner, split by shares with Bob"
+    }
+
+    "formatExpenseConfirmation omits the split clause entirely when the payer is the only participant" {
+        val expense = Expense(
+            id = ExpenseId("e1"),
+            groupId = GroupId("g1"),
+            currency = "USD",
+            description = "solo lunch",
+            amount = BigDecimal("12.00"),
+            payerId = alice.id,
+            splitType = SplitType.EQUAL,
+            createdBy = alice.id,
+            createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+            shares = listOf(ExpenseShare(alice.id, BigDecimal("12.00"))),
+        )
+
+        formatExpenseConfirmation(expense, members) shouldBe "Alice paid 12.00 USD for solo lunch"
     }
 
     "formatExpenseConfirmation fails loudly if the payer isn't in the members list" {
@@ -59,7 +95,7 @@ class MessageFormattingSpec : StringSpec({
         shouldThrow<NoSuchElementException> { formatExpenseConfirmation(expense, members) }
     }
 
-    "formatExpenseList shows a short id, description, and amount per line" {
+    "formatExpenseList shows a short id plus who paid and who participated per line" {
         val expense = Expense(
             id = ExpenseId("abcdef1234567890"),
             groupId = GroupId("g1"),
@@ -70,14 +106,15 @@ class MessageFormattingSpec : StringSpec({
             splitType = SplitType.EQUAL,
             createdBy = alice.id,
             createdAt = Instant.parse("2026-08-28T00:00:00Z"),
-            shares = emptyList(),
+            shares = listOf(ExpenseShare(alice.id, BigDecimal("45.00")), ExpenseShare(bob.id, BigDecimal("45.00"))),
         )
 
-        formatExpenseList(listOf(expense)) shouldBe "[abcdef12] dinner — 90.00 USD"
+        formatExpenseList(listOf(expense), members) shouldBe
+            "[abcdef12] Alice paid 90.00 USD for dinner, split equally with Bob"
     }
 
     "formatExpenseList explains there's nothing yet" {
-        formatExpenseList(emptyList()) shouldBe "No expenses yet — use /add to log one."
+        formatExpenseList(emptyList(), members) shouldBe "No expenses yet — use /add to log one."
     }
 
     "formatBalances phrases payments relative to the viewer" {
