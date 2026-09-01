@@ -1481,7 +1481,7 @@ class MessageFormattingSpec : StringSpec({
         shouldThrow<NoSuchElementException> { formatExpenseConfirmation(expense, members) }
     }
 
-    "formatExpenseList shows a short id plus who paid and who participated per line" {
+    "formatExpenseList shows a short id, date, and per-person share breakdown for an equal split" {
         val expense = Expense(
             id = ExpenseId("abcdef1234567890"),
             groupId = GroupId("g1"),
@@ -1491,12 +1491,48 @@ class MessageFormattingSpec : StringSpec({
             payerId = alice.id,
             splitType = SplitType.EQUAL,
             createdBy = alice.id,
-            createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+            createdAt = Instant.parse("2026-08-28T14:30:00Z"),
             shares = listOf(ExpenseShare(alice.id, BigDecimal("45.00")), ExpenseShare(bob.id, BigDecimal("45.00"))),
         )
 
         formatExpenseList(listOf(expense), members) shouldBe
-            "[abcdef12] Alice paid 90.00 USD for dinner, split equally with Bob"
+            "[abcdef12] 2026-08-28 dinner 90.00 USD, paid by Alice, split equally: Alice 45.00 USD, Bob 45.00 USD"
+    }
+
+    "formatExpenseList shows the real per-person amounts for an exact split, not an equal guess" {
+        val expense = Expense(
+            id = ExpenseId("abcdef1234567890"),
+            groupId = GroupId("g1"),
+            currency = "USD",
+            description = "rent",
+            amount = BigDecimal("90.00"),
+            payerId = alice.id,
+            splitType = SplitType.EXACT,
+            createdBy = alice.id,
+            createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+            shares = listOf(ExpenseShare(alice.id, BigDecimal("50.00")), ExpenseShare(bob.id, BigDecimal("40.00"))),
+        )
+
+        formatExpenseList(listOf(expense), members) shouldBe
+            "[abcdef12] 2026-08-28 rent 90.00 USD, paid by Alice, split by exact amounts: Alice 50.00 USD, Bob 40.00 USD"
+    }
+
+    "formatExpenseList shows the real per-person amounts for a shares split" {
+        val expense = Expense(
+            id = ExpenseId("abcdef1234567890"),
+            groupId = GroupId("g1"),
+            currency = "USD",
+            description = "groceries",
+            amount = BigDecimal("90.00"),
+            payerId = alice.id,
+            splitType = SplitType.SHARES,
+            createdBy = alice.id,
+            createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+            shares = listOf(ExpenseShare(alice.id, BigDecimal("60.00")), ExpenseShare(bob.id, BigDecimal("30.00"))),
+        )
+
+        formatExpenseList(listOf(expense), members) shouldBe
+            "[abcdef12] 2026-08-28 groceries 90.00 USD, paid by Alice, split by shares: Alice 60.00 USD, Bob 30.00 USD"
     }
 
     "formatExpenseList explains there's nothing yet" {
@@ -1586,10 +1622,25 @@ private fun splitTypeLabel(splitType: SplitType): String = when (splitType) {
 
 fun formatExpenseList(expenses: List<Expense>, members: List<Member>): String {
     if (expenses.isEmpty()) return "No expenses yet — use /add to log one."
-    return expenses.joinToString("\n") { expense ->
-        val shortId = expense.id.value.take(8)
-        "[$shortId] ${formatExpenseConfirmation(expense, members)}"
-    }
+    return expenses.joinToString("\n") { formatExpenseListLine(it, members) }
+}
+
+// Deliberately its own format rather than reusing formatExpenseConfirmation: /list is an
+// audit view, so unlike the brief /add confirmation it needs the date and, critically,
+// each person's actual share amount — for an EQUAL split that's implied (everyone pays the
+// same), but that's the whole point of EXACT/SHARES splits: amounts differ per person, and
+// naming the split type without the breakdown wouldn't say how much anyone actually owes.
+private fun formatExpenseListLine(expense: Expense, members: List<Member>): String {
+    val nameOf = members.associateBy { it.id }
+    val shortId = expense.id.value.take(8)
+    val date = expense.createdAt.toString().take(10)
+    val payerName = nameOf.getValue(expense.payerId).displayName
+    val breakdown = expense.shares
+        .sortedBy { nameOf.getValue(it.memberId).displayName }
+        .joinToString(", ") { share -> "${nameOf.getValue(share.memberId).displayName} ${formatAmount(share.shareAmount, expense.currency)}" }
+
+    return "[$shortId] $date ${expense.description} ${formatAmount(expense.amount, expense.currency)}, " +
+        "paid by $payerName, split ${splitTypeLabel(expense.splitType)}: $breakdown"
 }
 
 fun formatBalances(payments: List<DebtPayment>, members: List<Member>, viewerId: MemberId, currency: String): String {
@@ -1623,7 +1674,7 @@ Note: `nameOf.getValue(id)` (not `nameOf[id] ?: "someone"`) is deliberate — a 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `./gradlew :telegram:test --tests "split.telegram.MessageFormattingSpec"`
-Expected: `BUILD SUCCESSFUL`, 12 tests pass.
+Expected: `BUILD SUCCESSFUL`, 14 tests pass.
 
 - [ ] **Step 5: Commit**
 
@@ -2203,8 +2254,61 @@ class ListCommandSpec : StringSpec({
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(
-                -100L to "[newer123] Bob paid 20.00 USD for dinner, split equally with Alice\n" +
-                    "[older123] Alice paid 10.00 USD for lunch",
+                -100L to "[newer123] 2026-08-28 dinner 20.00 USD, paid by Bob, split equally: Alice 10.00 USD, Bob 10.00 USD\n" +
+                    "[older123] 2026-08-27 lunch 10.00 USD, paid by Alice, split equally: Alice 10.00 USD",
+            )
+        }
+    }
+
+    "shows the real per-person breakdown for exact and shares splits, not just equal" {
+        withTestDatabase { db ->
+            val groupRepository = ExposedGroupRepository(db)
+            val memberRepository = ExposedMemberRepository(db)
+            val expenseRepository = ExposedExpenseRepository(db)
+            val resolver = IdentityResolver(ExposedPlatformDirectory(db), memberRepository, groupRepository)
+            val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
+            val groupId = resolver.resolveGroup("-100001")
+            resolver.ensureGroupMembership(groupId, aliceId)
+            resolver.ensureGroupMembership(groupId, bobbyId)
+
+            expenseRepository.create(
+                Expense(
+                    id = ExpenseId("aaaa1234567890"),
+                    groupId = groupId,
+                    currency = "USD",
+                    description = "rent",
+                    amount = BigDecimal("100.00"),
+                    payerId = aliceId,
+                    splitType = SplitType.EXACT,
+                    createdBy = aliceId,
+                    createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+                    shares = listOf(ExpenseShare(aliceId, BigDecimal("60.00")), ExpenseShare(bobbyId, BigDecimal("40.00"))),
+                ),
+            )
+            expenseRepository.create(
+                Expense(
+                    id = ExpenseId("bbbb1234567890"),
+                    groupId = groupId,
+                    currency = "USD",
+                    description = "utilities",
+                    amount = BigDecimal("90.00"),
+                    payerId = bobbyId,
+                    splitType = SplitType.SHARES,
+                    createdBy = bobbyId,
+                    createdAt = Instant.parse("2026-08-29T00:00:00Z"),
+                    shares = listOf(ExpenseShare(aliceId, BigDecimal("30.00")), ExpenseShare(bobbyId, BigDecimal("60.00"))),
+                ),
+            )
+
+            val telegramApi = FakeTelegramApi()
+            val command = ListCommand(groupRepository, memberRepository, expenseRepository, telegramApi)
+
+            command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
+
+            telegramApi.sentMessages shouldBe listOf(
+                -100L to "[bbbb1234] 2026-08-29 utilities 90.00 USD, paid by Bob, split by shares: Alice 30.00 USD, Bob 60.00 USD\n" +
+                    "[aaaa1234] 2026-08-28 rent 100.00 USD, paid by Alice, split by exact amounts: Alice 60.00 USD, Bob 40.00 USD",
             )
         }
     }
@@ -2266,7 +2370,7 @@ class ListCommand(
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `./gradlew :telegram:test --tests "split.telegram.ListCommandSpec"`
-Expected: `BUILD SUCCESSFUL`, 2 tests pass.
+Expected: `BUILD SUCCESSFUL`, 3 tests pass.
 
 - [ ] **Step 5: Commit**
 

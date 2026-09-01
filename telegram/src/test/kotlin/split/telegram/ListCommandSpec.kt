@@ -64,8 +64,61 @@ class ListCommandSpec : StringSpec({
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(
-                -100L to "[newer123] Bob paid 20.00 USD for dinner, split equally with Alice\n" +
-                    "[older123] Alice paid 10.00 USD for lunch",
+                -100L to "[newer123] 2026-08-28 dinner 20.00 USD, paid by Bob, split equally: Alice 10.00 USD, Bob 10.00 USD\n" +
+                    "[older123] 2026-08-27 lunch 10.00 USD, paid by Alice, split equally: Alice 10.00 USD",
+            )
+        }
+    }
+
+    "shows the real per-person breakdown for exact and shares splits, not just equal" {
+        withTestDatabase { db ->
+            val groupRepository = ExposedGroupRepository(db)
+            val memberRepository = ExposedMemberRepository(db)
+            val expenseRepository = ExposedExpenseRepository(db)
+            val resolver = IdentityResolver(ExposedPlatformDirectory(db), memberRepository, groupRepository)
+            val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
+            val groupId = resolver.resolveGroup("-100001")
+            resolver.ensureGroupMembership(groupId, aliceId)
+            resolver.ensureGroupMembership(groupId, bobbyId)
+
+            expenseRepository.create(
+                Expense(
+                    id = ExpenseId("aaaa1234567890"),
+                    groupId = groupId,
+                    currency = "USD",
+                    description = "rent",
+                    amount = BigDecimal("100.00"),
+                    payerId = aliceId,
+                    splitType = SplitType.EXACT,
+                    createdBy = aliceId,
+                    createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+                    shares = listOf(ExpenseShare(aliceId, BigDecimal("60.00")), ExpenseShare(bobbyId, BigDecimal("40.00"))),
+                ),
+            )
+            expenseRepository.create(
+                Expense(
+                    id = ExpenseId("bbbb1234567890"),
+                    groupId = groupId,
+                    currency = "USD",
+                    description = "utilities",
+                    amount = BigDecimal("90.00"),
+                    payerId = bobbyId,
+                    splitType = SplitType.SHARES,
+                    createdBy = bobbyId,
+                    createdAt = Instant.parse("2026-08-29T00:00:00Z"),
+                    shares = listOf(ExpenseShare(aliceId, BigDecimal("30.00")), ExpenseShare(bobbyId, BigDecimal("60.00"))),
+                ),
+            )
+
+            val telegramApi = FakeTelegramApi()
+            val command = ListCommand(groupRepository, memberRepository, expenseRepository, telegramApi)
+
+            command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
+
+            telegramApi.sentMessages shouldBe listOf(
+                -100L to "[bbbb1234] 2026-08-29 utilities 90.00 USD, paid by Bob, split by shares: Alice 30.00 USD, Bob 60.00 USD\n" +
+                    "[aaaa1234] 2026-08-28 rent 100.00 USD, paid by Alice, split by exact amounts: Alice 60.00 USD, Bob 40.00 USD",
             )
         }
     }

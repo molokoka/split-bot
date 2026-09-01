@@ -42,10 +42,25 @@ private fun splitTypeLabel(splitType: SplitType): String = when (splitType) {
 
 fun formatExpenseList(expenses: List<Expense>, members: List<Member>): String {
     if (expenses.isEmpty()) return "No expenses yet — use /add to log one."
-    return expenses.joinToString("\n") { expense ->
-        val shortId = expense.id.value.take(8)
-        "[$shortId] ${formatExpenseConfirmation(expense, members)}"
-    }
+    return expenses.joinToString("\n") { formatExpenseListLine(it, members) }
+}
+
+// Deliberately its own format rather than reusing formatExpenseConfirmation: /list is an
+// audit view, so unlike the brief /add confirmation it needs the date and, critically,
+// each person's actual share amount — for an EQUAL split that's implied (everyone pays the
+// same), but that's the whole point of EXACT/SHARES splits: amounts differ per person, and
+// naming the split type without the breakdown wouldn't say how much anyone actually owes.
+private fun formatExpenseListLine(expense: Expense, members: List<Member>): String {
+    val nameOf = members.associateBy { it.id }
+    val shortId = expense.id.value.take(8)
+    val date = expense.createdAt.toString().take(10)
+    val payerName = nameOf.getValue(expense.payerId).displayName
+    val breakdown = expense.shares
+        .sortedBy { nameOf.getValue(it.memberId).displayName }
+        .joinToString(", ") { share -> "${nameOf.getValue(share.memberId).displayName} ${formatAmount(share.shareAmount, expense.currency)}" }
+
+    return "[$shortId] $date ${expense.description} ${formatAmount(expense.amount, expense.currency)}, " +
+        "paid by $payerName, split ${splitTypeLabel(expense.splitType)}: $breakdown"
 }
 
 fun formatBalances(payments: List<DebtPayment>, members: List<Member>, viewerId: MemberId, currency: String): String {

@@ -95,7 +95,7 @@ class MessageFormattingSpec : StringSpec({
         shouldThrow<NoSuchElementException> { formatExpenseConfirmation(expense, members) }
     }
 
-    "formatExpenseList shows a short id plus who paid and who participated per line" {
+    "formatExpenseList shows a short id, date, and per-person share breakdown for an equal split" {
         val expense = Expense(
             id = ExpenseId("abcdef1234567890"),
             groupId = GroupId("g1"),
@@ -105,12 +105,48 @@ class MessageFormattingSpec : StringSpec({
             payerId = alice.id,
             splitType = SplitType.EQUAL,
             createdBy = alice.id,
-            createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+            createdAt = Instant.parse("2026-08-28T14:30:00Z"),
             shares = listOf(ExpenseShare(alice.id, BigDecimal("45.00")), ExpenseShare(bob.id, BigDecimal("45.00"))),
         )
 
         formatExpenseList(listOf(expense), members) shouldBe
-            "[abcdef12] Alice paid 90.00 USD for dinner, split equally with Bob"
+            "[abcdef12] 2026-08-28 dinner 90.00 USD, paid by Alice, split equally: Alice 45.00 USD, Bob 45.00 USD"
+    }
+
+    "formatExpenseList shows the real per-person amounts for an exact split, not an equal guess" {
+        val expense = Expense(
+            id = ExpenseId("abcdef1234567890"),
+            groupId = GroupId("g1"),
+            currency = "USD",
+            description = "rent",
+            amount = BigDecimal("90.00"),
+            payerId = alice.id,
+            splitType = SplitType.EXACT,
+            createdBy = alice.id,
+            createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+            shares = listOf(ExpenseShare(alice.id, BigDecimal("50.00")), ExpenseShare(bob.id, BigDecimal("40.00"))),
+        )
+
+        formatExpenseList(listOf(expense), members) shouldBe
+            "[abcdef12] 2026-08-28 rent 90.00 USD, paid by Alice, split by exact amounts: Alice 50.00 USD, Bob 40.00 USD"
+    }
+
+    "formatExpenseList shows the real per-person amounts for a shares split" {
+        val expense = Expense(
+            id = ExpenseId("abcdef1234567890"),
+            groupId = GroupId("g1"),
+            currency = "USD",
+            description = "groceries",
+            amount = BigDecimal("90.00"),
+            payerId = alice.id,
+            splitType = SplitType.SHARES,
+            createdBy = alice.id,
+            createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+            shares = listOf(ExpenseShare(alice.id, BigDecimal("60.00")), ExpenseShare(bob.id, BigDecimal("30.00"))),
+        )
+
+        formatExpenseList(listOf(expense), members) shouldBe
+            "[abcdef12] 2026-08-28 groceries 90.00 USD, paid by Alice, split by shares: Alice 60.00 USD, Bob 30.00 USD"
     }
 
     "formatExpenseList explains there's nothing yet" {
