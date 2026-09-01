@@ -46,7 +46,7 @@ suspend fun main() {
     val identityResolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
 
     val handlers = mapOf(
-        "start" to StartCommand(telegramApi)::handle,
+        "start" to StartCommand(groupRepository, telegramApi)::handle,
         "help" to HelpCommand(telegramApi)::handle,
         "currency" to CurrencyCommand(groupRepository, telegramApi)::handle,
         "members" to MembersCommand(memberRepository, platformDirectory, telegramApi)::handle,

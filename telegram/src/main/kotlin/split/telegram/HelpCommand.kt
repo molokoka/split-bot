@@ -1,5 +1,7 @@
 package split.telegram
 
+import split.core.GroupRepository
+
 // Sent with parse_mode HTML (see HttpTelegramApi), so placeholders use <code>...</code>
 // rather than bare <angle brackets> — a raw "<amount>" would be read as an (invalid,
 // unclosed) HTML tag and mangle or break the message. The @-prefixed placeholders
@@ -9,7 +11,7 @@ package split.telegram
 // happens to hold that username.
 internal const val HELP_TEXT = """Commands:
 
-/add <code>amount</code> [<code>currency</code>] <code>description</code> <code>@mentions...</code> — log an expense you paid, split equally
+/add <code>amount</code> <code>currency</code> (optional) <code>description</code> <code>@mentions...</code> — log an expense you paid, split equally
 /members — list who I recognize in this group
 /currency <code>currency</code> — set this group's default currency
 /balances — see who owes you and who you owe
@@ -25,8 +27,18 @@ class HelpCommand(private val telegramApi: TelegramApi) {
     }
 }
 
-class StartCommand(private val telegramApi: TelegramApi) {
+class StartCommand(
+    private val groupRepository: GroupRepository,
+    private val telegramApi: TelegramApi,
+) {
     suspend fun handle(context: CommandContext) {
-        telegramApi.sendMessage(context.chatId, "Hi! I'll help you split expenses in this group.\n\n$HELP_TEXT")
+        val group = groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
+        telegramApi.sendMessage(
+            context.chatId,
+            "Hi! I'll help you split expenses in this group.\n\n" +
+                "This group's default currency is ${group.defaultCurrency} — change it anytime with /currency.\n\n" +
+                "Before you can @mention someone in /add, they need to send me /start too.\n\n" +
+                HELP_TEXT,
+        )
     }
 }
