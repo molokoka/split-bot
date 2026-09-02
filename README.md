@@ -62,20 +62,7 @@ set -a; source .env; set +a
 
 You should see `Bot started, polling for updates...`. Leave it running in the foreground.
 
-### 4. Try it in Telegram
-
-Open a chat with your bot (or add it to a group) and send:
-
-```
-/start
-/help
-/split 10 coffee @yourusername
-/balance
-```
-
-Note: to `@mention` someone in `/split`, that person needs to have sent the bot `/start` at least once — the bot only knows about users who've messaged it. Confirm replies arrive for each command.
-
-### 5. Stop and clean up
+### 4. Stop and clean up
 
 `Ctrl+C` to stop the poll loop, then delete the manual test database:
 
