@@ -12,7 +12,7 @@ import java.time.Clock
 import java.time.Instant
 import java.util.UUID
 
-class AddExpenseCommand(
+class SplitExpenseCommand(
     private val platformDirectory: PlatformDirectory,
     private val groupRepository: GroupRepository,
     private val memberRepository: MemberRepository,
@@ -26,9 +26,9 @@ class AddExpenseCommand(
         val group = groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
 
         val parsed = try {
-            parseAddArgs(context.args, group.defaultCurrency)
+            parseSplitArgs(context.args, group.defaultCurrency)
         } catch (e: IllegalArgumentException) {
-            telegramApi.sendMessage(context.chatId, e.message ?: "Invalid /add usage")
+            telegramApi.sendMessage(context.chatId, e.message ?: "Invalid /split usage")
             return
         }
 

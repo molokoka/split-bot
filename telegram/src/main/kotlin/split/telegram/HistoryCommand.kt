@@ -4,22 +4,25 @@ import split.core.ExpenseRepository
 import split.core.GroupRepository
 import split.core.MemberRepository
 import split.core.PlatformDirectory
+import split.core.SettlementRepository
+import split.core.computeBalanceHistory
 
-class ExpensesCommand(
+class HistoryCommand(
     private val groupRepository: GroupRepository,
     private val memberRepository: MemberRepository,
     private val expenseRepository: ExpenseRepository,
+    private val settlementRepository: SettlementRepository,
     private val platformDirectory: PlatformDirectory,
     private val telegramApi: TelegramApi,
 ) {
     suspend fun handle(context: CommandContext) {
         groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
         val expenses = expenseRepository.listActive(context.groupId)
-            .sortedBy { it.createdAt }
-            .takeLast(10)
+        val settlements = settlementRepository.listActive(context.groupId)
+        val events = computeBalanceHistory(expenses, settlements).takeLast(20)
         val members = memberRepository.findByGroup(context.groupId)
         val usernames = platformDirectory.findUsernames(IdentityResolver.PLATFORM, members.map { it.id })
 
-        telegramApi.sendRichMessage(context.chatId, buildExpenseListMessage(expenses, members, usernames))
+        telegramApi.sendRichMessage(context.chatId, buildHistoryMessage(events, members, usernames))
     }
 }

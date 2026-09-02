@@ -7,6 +7,8 @@ import java.time.Instant
 import split.core.Expense
 import split.core.ExpenseId
 import split.core.ExpenseShare
+import split.core.Settlement
+import split.core.SettlementId
 import split.core.SplitType
 import split.storage.ExposedExpenseRepository
 import split.storage.ExposedGroupRepository
@@ -14,7 +16,7 @@ import split.storage.ExposedMemberRepository
 import split.storage.ExposedPlatformDirectory
 import split.storage.ExposedSettlementRepository
 
-class BalancesCommandSpec : StringSpec({
+class BalanceCommandSpec : StringSpec({
 
     "shows what the viewer owes and is owed" {
         withTestDatabase { db ->
@@ -47,7 +49,7 @@ class BalancesCommandSpec : StringSpec({
             )
 
             val telegramApi = FakeTelegramApi()
-            val command = BalancesCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
+            val command = BalanceCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
 
             command.handle(CommandContext(-100, bobId, "2", groupId, ""))
 
@@ -67,7 +69,7 @@ class BalancesCommandSpec : StringSpec({
             val groupId = resolver.resolveGroup("-100001")
 
             val telegramApi = FakeTelegramApi()
-            val command = BalancesCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
+            val command = BalanceCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
@@ -123,7 +125,7 @@ class BalancesCommandSpec : StringSpec({
             )
 
             val telegramApi = FakeTelegramApi()
-            val command = BalancesCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
+            val command = BalanceCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
 
             command.handle(CommandContext(-100, bobId, "2", groupId, ""))
 
@@ -192,7 +194,7 @@ class BalancesCommandSpec : StringSpec({
             )
 
             val telegramApi = FakeTelegramApi()
-            val command = BalancesCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
+            val command = BalanceCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
             command.handle(CommandContext(-100, bobId, "2", groupId, ""))
@@ -203,6 +205,73 @@ class BalancesCommandSpec : StringSpec({
                 -100L to "Balances:\n\n@carol owes you 10.00 USD", // bob
                 -100L to "Balances:\n\nYou owe @alice 10.00 USD\nYou owe @bob 10.00 USD", // carol
             )
+        }
+    }
+
+    "shows every currency the viewer has a stake in, and skips one that's already settled up" {
+        withTestDatabase { db ->
+            val groupRepository = ExposedGroupRepository(db)
+            val memberRepository = ExposedMemberRepository(db)
+            val expenseRepository = ExposedExpenseRepository(db)
+            val settlementRepository = ExposedSettlementRepository(db)
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+
+            val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            val bobId = resolver.resolveMember("2", "bob", "Bob")
+            val groupId = resolver.resolveGroup("-100001")
+            resolver.ensureGroupMembership(groupId, aliceId)
+            resolver.ensureGroupMembership(groupId, bobId)
+
+            // USD: Bob owes Alice.
+            expenseRepository.create(
+                Expense(
+                    id = ExpenseId("e1"),
+                    groupId = groupId,
+                    currency = "USD",
+                    description = "dinner",
+                    amount = BigDecimal("60.00"),
+                    payerId = aliceId,
+                    splitType = SplitType.EQUAL,
+                    createdBy = aliceId,
+                    createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+                    shares = listOf(ExpenseShare(aliceId, BigDecimal("30.00")), ExpenseShare(bobId, BigDecimal("30.00"))),
+                ),
+            )
+            // EUR: split evenly and already fully settled by the settlement below.
+            expenseRepository.create(
+                Expense(
+                    id = ExpenseId("e2"),
+                    groupId = groupId,
+                    currency = "EUR",
+                    description = "taxi",
+                    amount = BigDecimal("20.00"),
+                    payerId = aliceId,
+                    splitType = SplitType.EQUAL,
+                    createdBy = aliceId,
+                    createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+                    shares = listOf(ExpenseShare(aliceId, BigDecimal("10.00")), ExpenseShare(bobId, BigDecimal("10.00"))),
+                ),
+            )
+            settlementRepository.create(
+                Settlement(
+                    id = SettlementId("s1"),
+                    groupId = groupId,
+                    currency = "EUR",
+                    fromMemberId = bobId,
+                    toMemberId = aliceId,
+                    amount = BigDecimal("10.00"),
+                    createdBy = bobId,
+                    createdAt = Instant.parse("2026-08-29T00:00:00Z"),
+                ),
+            )
+
+            val telegramApi = FakeTelegramApi()
+            val command = BalanceCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
+
+            command.handle(CommandContext(-100, bobId, "2", groupId, ""))
+
+            telegramApi.sentMessages shouldBe listOf(-100L to "Balances:\n\nYou owe @alice 30.00 USD")
         }
     }
 })

@@ -6,6 +6,7 @@ import split.core.MemberRepository
 import split.core.PlatformDirectory
 import split.core.SettlementRepository
 import split.core.computeBalances
+import split.core.distinctCurrencies
 import split.core.simplifyDebts
 
 class SettleSuggestCommand(
@@ -17,17 +18,18 @@ class SettleSuggestCommand(
     private val telegramApi: TelegramApi,
 ) {
     suspend fun handle(context: CommandContext) {
-        val group = groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
-        val expenses = expenseRepository.listActive(context.groupId, group.defaultCurrency)
-        val settlements = settlementRepository.listActive(context.groupId, group.defaultCurrency)
-        val balances = computeBalances(group.defaultCurrency, expenses, settlements)
-        val payments = simplifyDebts(balances)
+        groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
+        val expenses = expenseRepository.listActive(context.groupId)
+        val settlements = settlementRepository.listActive(context.groupId)
+        val paymentsByCurrency = distinctCurrencies(expenses, settlements).associateWith { currency ->
+            simplifyDebts(computeBalances(currency, expenses, settlements))
+        }
         val members = memberRepository.findByGroup(context.groupId)
         val usernames = platformDirectory.findUsernames(IdentityResolver.PLATFORM, members.map { it.id })
 
         telegramApi.sendMessage(
             context.chatId,
-            formatSettleSuggestions(payments, members, group.defaultCurrency, usernames),
+            formatSettleSuggestions(paymentsByCurrency, members, usernames),
         )
     }
 }

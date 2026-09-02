@@ -36,13 +36,12 @@ class ExposedSettlementRepository(private val db: Database) : SettlementReposito
         }
     }
 
-    override suspend fun listActive(groupId: GroupId, currency: String): List<Settlement> =
+    override suspend fun listActive(groupId: GroupId): List<Settlement> =
         withContext(Dispatchers.IO) {
             suspendTransaction(db) {
                 SettlementTable.selectAll()
                     .where {
                         (SettlementTable.groupId eq groupId.value) and
-                            (SettlementTable.currency eq currency) and
                             SettlementTable.deletedAt.isNull()
                     }
                     .map { it.toSettlement() }

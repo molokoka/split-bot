@@ -64,7 +64,7 @@ class ExposedExpenseRepositorySpec : StringSpec({
         }
     }
 
-    "listActive returns expenses for the group/currency, excluding soft-deleted ones" {
+    "listActive returns expenses for the group, excluding soft-deleted ones" {
         withTestDatabase { db ->
             seedGroupAndMembers(db)
             val repo = ExposedExpenseRepository(db)
@@ -77,7 +77,20 @@ class ExposedExpenseRepositorySpec : StringSpec({
             repo.create(active)
             repo.create(deleted)
 
-            repo.listActive(group, "USD") shouldBe listOf(active)
+            repo.listActive(group) shouldBe listOf(active)
+        }
+    }
+
+    "listActive returns expenses regardless of currency" {
+        withTestDatabase { db ->
+            seedGroupAndMembers(db)
+            val repo = ExposedExpenseRepository(db)
+            val usd = dinner()
+            val eur = usd.copy(id = ExpenseId("e2"), description = "hotel", currency = "EUR")
+            repo.create(usd)
+            repo.create(eur)
+
+            repo.listActive(group).toSet() shouldBe setOf(usd, eur)
         }
     }
 
@@ -90,7 +103,7 @@ class ExposedExpenseRepositorySpec : StringSpec({
 
             repo.softDelete(expense.id, Instant.parse("2026-08-27T01:00:00Z"))
 
-            repo.listActive(group, "USD") shouldBe emptyList()
+            repo.listActive(group) shouldBe emptyList()
             repo.find(expense.id)?.deletedAt shouldBe Instant.parse("2026-08-27T01:00:00Z")
         }
     }

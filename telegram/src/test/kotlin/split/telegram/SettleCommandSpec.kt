@@ -25,7 +25,7 @@ class SettleCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, "@bobby 20"))
 
-            val settlement = settlementRepository.listActive(groupId, "USD").single()
+            val settlement = settlementRepository.listActive(groupId).single()
             settlement.fromMemberId shouldBe aliceId
             settlement.amount shouldBe BigDecimal("20.00")
             telegramApi.sentMessages.single().first shouldBe -100L
@@ -48,9 +48,7 @@ class SettleCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, "@bobby 20"))
 
-            // if this were hardcoded to USD, listActive(groupId, "EUR") would come back empty
-            // even though a settlement was created — exactly the bug this test guards against.
-            val settlement = settlementRepository.listActive(groupId, "EUR").single()
+            val settlement = settlementRepository.listActive(groupId).single()
             settlement.currency shouldBe "EUR"
             telegramApi.sentMessages.single().second shouldBe "Settlement recorded:\n\nYou paid 20.00 EUR."
         }
@@ -70,7 +68,7 @@ class SettleCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, "@stranger 20"))
 
-            settlementRepository.listActive(groupId, "USD") shouldBe emptyList()
+            settlementRepository.listActive(groupId) shouldBe emptyList()
             telegramApi.sentMessages.single().second shouldBe
                 "I don't recognize @stranger yet — ask them to run /start with me first."
         }

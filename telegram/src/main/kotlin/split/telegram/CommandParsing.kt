@@ -16,7 +16,7 @@ fun parseCommand(text: String): Pair<String, String> {
 fun extractMentions(text: String): List<String> =
     mentionPattern.findAll(text).map { it.groupValues[1] }.toList()
 
-data class AddExpenseArgs(
+data class SplitExpenseArgs(
     val amount: BigDecimal,
     val currency: String,
     val description: String,
@@ -25,14 +25,14 @@ data class AddExpenseArgs(
 
 private val currencyCodePattern = Regex("^[A-Z]{3}$")
 
-fun parseAddArgs(args: String, defaultCurrency: String): AddExpenseArgs {
+fun parseSplitArgs(args: String, defaultCurrency: String): SplitExpenseArgs {
     val mentions = extractMentions(args)
-    require(mentions.isNotEmpty()) { "Mention at least one participant, e.g. /add 90 dinner <code>@alice</code> <code>@bob</code>" }
+    require(mentions.isNotEmpty()) { "Mention at least one participant, e.g. /split 90 dinner <code>@alice</code> <code>@bob</code>" }
 
     val withoutMentions = mentionPattern.replace(args, "").trim().replace(Regex("\\s+"), " ")
     val parts = withoutMentions.split(" ", limit = 2)
     require(parts.size == 2) {
-        "Usage: /add <code>amount</code> <code>currency</code> (optional) <code>description</code> <code>@mentions...</code>"
+        "Usage: /split <code>amount</code> [<code>currency</code>] <code>description</code> <code>@mentions...</code> (currency defaults to the group's if omitted)"
     }
 
     val amount = BigDecimal(parts[0])
@@ -40,9 +40,9 @@ fun parseAddArgs(args: String, defaultCurrency: String): AddExpenseArgs {
     val restParts = rest.split(" ", limit = 2)
 
     return if (restParts.size == 2 && currencyCodePattern.matches(restParts[0])) {
-        AddExpenseArgs(amount, restParts[0], restParts[1], mentions)
+        SplitExpenseArgs(amount, restParts[0], restParts[1], mentions)
     } else {
-        AddExpenseArgs(amount, defaultCurrency, rest, mentions)
+        SplitExpenseArgs(amount, defaultCurrency, rest, mentions)
     }
 }
 

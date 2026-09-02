@@ -6,3 +6,4 @@ gradle/gradle-daemon-jvm.properties
 .idea/
 .env
 split-manual-test.db*
+bot-run.log

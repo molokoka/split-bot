@@ -55,13 +55,12 @@ class ExposedExpenseRepository(private val db: Database) : ExpenseRepository {
         }
     }
 
-    override suspend fun listActive(groupId: GroupId, currency: String): List<Expense> =
+    override suspend fun listActive(groupId: GroupId): List<Expense> =
         withContext(Dispatchers.IO) {
             suspendTransaction(db) {
                 ExpenseTable.selectAll()
                     .where {
                         (ExpenseTable.groupId eq groupId.value) and
-                            (ExpenseTable.currency eq currency) and
                             ExpenseTable.deletedAt.isNull()
                     }
                     .map { row -> row.toExpense(sharesFor(ExpenseId(row[ExpenseTable.id]))) }

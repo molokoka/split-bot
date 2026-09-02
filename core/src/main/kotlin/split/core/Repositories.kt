@@ -18,13 +18,13 @@ interface GroupRepository {
 interface ExpenseRepository {
     suspend fun create(expense: Expense)
     suspend fun find(id: ExpenseId): Expense?
-    suspend fun listActive(groupId: GroupId, currency: String): List<Expense>
+    suspend fun listActive(groupId: GroupId): List<Expense>
     suspend fun softDelete(id: ExpenseId, deletedAt: Instant)
 }
 
 interface SettlementRepository {
     suspend fun create(settlement: Settlement)
-    suspend fun listActive(groupId: GroupId, currency: String): List<Settlement>
+    suspend fun listActive(groupId: GroupId): List<Settlement>
     suspend fun softDelete(id: SettlementId, deletedAt: Instant)
 }
 

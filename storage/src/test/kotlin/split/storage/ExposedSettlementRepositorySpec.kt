@@ -42,7 +42,7 @@ class ExposedSettlementRepositorySpec : StringSpec({
 
             repo.create(settlement)
 
-            repo.listActive(group, "USD") shouldBe listOf(settlement)
+            repo.listActive(group) shouldBe listOf(settlement)
         }
     }
 
@@ -64,28 +64,27 @@ class ExposedSettlementRepositorySpec : StringSpec({
 
             repo.softDelete(settlement.id, Instant.parse("2026-08-27T01:00:00Z"))
 
-            repo.listActive(group, "USD") shouldBe emptyList()
+            repo.listActive(group) shouldBe emptyList()
         }
     }
 
-    "excludes settlements in a different currency from listActive" {
+    "includes settlements regardless of currency" {
         withTestDatabase { db ->
             seedGroupAndMembers(db)
             val repo = ExposedSettlementRepository(db)
-            repo.create(
-                Settlement(
-                    id = SettlementId("s1"),
-                    groupId = group,
-                    currency = "EUR",
-                    fromMemberId = bob,
-                    toMemberId = alice,
-                    amount = BigDecimal("20.00"),
-                    createdBy = bob,
-                    createdAt = createdAt,
-                ),
+            val eurSettlement = Settlement(
+                id = SettlementId("s1"),
+                groupId = group,
+                currency = "EUR",
+                fromMemberId = bob,
+                toMemberId = alice,
+                amount = BigDecimal("20.00"),
+                createdBy = bob,
+                createdAt = createdAt,
             )
+            repo.create(eurSettlement)
 
-            repo.listActive(group, "USD") shouldBe emptyList()
+            repo.listActive(group) shouldBe listOf(eurSettlement)
         }
     }
 
@@ -106,7 +105,7 @@ class ExposedSettlementRepositorySpec : StringSpec({
 
             repo.create(settlement)
 
-            repo.listActive(group, "USD").single().amount shouldBe BigDecimal("19.99")
+            repo.listActive(group).single().amount shouldBe BigDecimal("19.99")
         }
     }
 })

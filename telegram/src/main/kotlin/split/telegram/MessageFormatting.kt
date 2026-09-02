@@ -1,11 +1,15 @@
 package split.telegram
 
+import split.core.BalanceHistoryEvent
 import split.core.DebtPayment
 import split.core.Expense
+import split.core.ExpenseHistoryEvent
 import split.core.Member
 import split.core.MemberId
 import split.core.Settlement
+import split.core.SettlementHistoryEvent
 import split.core.SplitType
+import split.core.simplifyDebts
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -66,25 +70,25 @@ private fun splitTypeLabel(splitType: SplitType): String = when (splitType) {
 
 fun buildExpenseListMessage(expenses: List<Expense>, members: List<Member>, usernames: Map<MemberId, String> = emptyMap()): InputRichMessage {
     if (expenses.isEmpty()) {
-        return InputRichMessage(blocks = listOf(RichBlockParagraph("No expenses yet — use /add to log one.")))
+        return InputRichMessage(blocks = listOf(RichBlockParagraph("No expenses yet — use /split to log one.")))
     }
 
     val header = listOf("Expense", "Split").map {
         RichBlockTableCell(text = it, isHeader = true)
     }
-    val rows = expenses.map { expenseRow(it, members, usernames) }
+    val nameOf = members.associateBy { it.id }
+    val rows = expenses.map { expenseRow(it, nameOf, usernames) }
     return InputRichMessage(
         blocks = listOf(RichBlockTable(cells = listOf(header) + rows, caption = "Last 10 expenses:")),
     )
 }
 
 // Deliberately its own format rather than reusing formatExpenseConfirmation: /expenses is an
-// audit view, so unlike the brief /add confirmation it needs the date and, critically,
+// audit view, so unlike the brief /split confirmation it needs the date and, critically,
 // each person's actual share amount — for an EQUAL split that's implied (everyone pays the
 // same), but that's the whole point of EXACT/SHARES splits: amounts differ per person, and
 // naming the split type without the breakdown wouldn't say how much anyone actually owes.
-private fun expenseRow(expense: Expense, members: List<Member>, usernames: Map<MemberId, String>): List<RichBlockTableCell> {
-    val nameOf = members.associateBy { it.id }
+private fun expenseRow(expense: Expense, nameOf: Map<MemberId, Member>, usernames: Map<MemberId, String>): List<RichBlockTableCell> {
     val shortId = expense.id.value.take(8)
     val date = expense.createdAt.toString().take(10)
     val payerName = plainName(nameOf.getValue(expense.payerId), usernames)
@@ -118,14 +122,14 @@ fun buildSettlementListMessage(
     val header = listOf("Date", "From", "To", "Amount").map {
         RichBlockTableCell(text = it, isHeader = true)
     }
-    val rows = settlements.map { settlementRow(it, members, usernames) }
+    val nameOf = members.associateBy { it.id }
+    val rows = settlements.map { settlementRow(it, nameOf, usernames) }
     return InputRichMessage(
         blocks = listOf(RichBlockTable(cells = listOf(header) + rows, caption = "Last 10 settlements:")),
     )
 }
 
-private fun settlementRow(settlement: Settlement, members: List<Member>, usernames: Map<MemberId, String>): List<RichBlockTableCell> {
-    val nameOf = members.associateBy { it.id }
+private fun settlementRow(settlement: Settlement, nameOf: Map<MemberId, Member>, usernames: Map<MemberId, String>): List<RichBlockTableCell> {
     val date = settlement.createdAt.toString().take(10)
     val from = plainName(nameOf.getValue(settlement.fromMemberId), usernames)
     val to = plainName(nameOf.getValue(settlement.toMemberId), usernames)
@@ -134,37 +138,88 @@ private fun settlementRow(settlement: Settlement, members: List<Member>, usernam
 }
 
 fun formatBalances(
-    payments: List<DebtPayment>,
+    paymentsByCurrency: Map<String, List<DebtPayment>>,
     members: List<Member>,
     viewerId: MemberId,
-    currency: String,
     usernames: Map<MemberId, String> = emptyMap(),
 ): String {
     val nameOf = members.associateBy { it.id }
-    val relevant = payments.filter { it.from == viewerId || it.to == viewerId }
-    if (relevant.isEmpty()) return "You're all settled up!"
-
-    return "Balances:\n\n" + relevant.joinToString("\n") { payment ->
-        val amount = formatAmount(payment.amount, currency)
-        if (payment.from == viewerId) {
-            "You owe ${mentionName(nameOf.getValue(payment.to), usernames)} $amount"
-        } else {
-            "${mentionName(nameOf.getValue(payment.from), usernames)} owes you $amount"
+    val lines = paymentsByCurrency.toSortedMap().flatMap { (currency, payments) ->
+        payments.filter { it.from == viewerId || it.to == viewerId }.map { payment ->
+            val amount = formatAmount(payment.amount, currency)
+            if (payment.from == viewerId) {
+                "You owe ${mentionName(nameOf.getValue(payment.to), usernames)} $amount"
+            } else {
+                "${mentionName(nameOf.getValue(payment.from), usernames)} owes you $amount"
+            }
         }
     }
+    if (lines.isEmpty()) return "You're all settled up!"
+
+    return "Balances:\n\n" + lines.joinToString("\n")
 }
 
 fun formatSettleSuggestions(
-    payments: List<DebtPayment>,
+    paymentsByCurrency: Map<String, List<DebtPayment>>,
     members: List<Member>,
-    currency: String,
     usernames: Map<MemberId, String> = emptyMap(),
 ): String {
-    if (payments.isEmpty()) return "Everyone's settled up — nothing to do!"
     val nameOf = members.associateBy { it.id }
-    return "Suggested settlements:\n\n" + payments.joinToString("\n") { payment ->
-        val from = mentionName(nameOf.getValue(payment.from), usernames)
-        val to = mentionName(nameOf.getValue(payment.to), usernames)
-        "$from pays $to ${formatAmount(payment.amount, currency)}"
+    val lines = paymentsByCurrency.toSortedMap().flatMap { (currency, payments) ->
+        payments.map { payment ->
+            val from = mentionName(nameOf.getValue(payment.from), usernames)
+            val to = mentionName(nameOf.getValue(payment.to), usernames)
+            "$from to pay $to ${formatAmount(payment.amount, currency)}"
+        }
     }
+    if (lines.isEmpty()) return "Everyone's settled up — nothing to do!"
+
+    return "Suggested settlements:\n\n" + lines.joinToString("\n")
+}
+
+fun buildHistoryMessage(
+    events: List<BalanceHistoryEvent>,
+    members: List<Member>,
+    usernames: Map<MemberId, String> = emptyMap(),
+): InputRichMessage {
+    if (events.isEmpty()) {
+        return InputRichMessage(blocks = listOf(RichBlockParagraph("No history yet — use /split or /settle to get started.")))
+    }
+
+    val header = listOf("Event", "Balances").map {
+        RichBlockTableCell(text = it, isHeader = true)
+    }
+    val nameOf = members.associateBy { it.id }
+    val rows = events.map { historyRow(it, nameOf, usernames) }
+    return InputRichMessage(
+        blocks = listOf(RichBlockTable(cells = listOf(header) + rows, caption = "Last 20 events:")),
+    )
+}
+
+private fun historyRow(event: BalanceHistoryEvent, nameOf: Map<MemberId, Member>, usernames: Map<MemberId, String>): List<RichBlockTableCell> {
+    val eventCell = when (event) {
+        is ExpenseHistoryEvent -> {
+            val payer = plainName(nameOf.getValue(event.expense.payerId), usernames)
+            "${event.expense.createdAt.toString().take(10)} · ${event.expense.description} — " +
+                "$payer paid ${formatAmount(event.expense.amount, event.currency)}"
+        }
+        is SettlementHistoryEvent -> {
+            val from = plainName(nameOf.getValue(event.settlement.fromMemberId), usernames)
+            val to = plainName(nameOf.getValue(event.settlement.toMemberId), usernames)
+            "${event.settlement.createdAt.toString().take(10)} · $from paid $to ${formatAmount(event.settlement.amount, event.currency)}"
+        }
+    }
+
+    val payments = simplifyDebts(event.balancesAfter)
+    val owesCell = if (payments.isEmpty()) {
+        "Everyone's settled up in ${event.currency}"
+    } else {
+        payments.joinToString("\n") { payment ->
+            val from = plainName(nameOf.getValue(payment.from), usernames)
+            val to = plainName(nameOf.getValue(payment.to), usernames)
+            "$from owes $to ${formatAmount(payment.amount, event.currency)}"
+        }
+    }
+
+    return listOf(eventCell, owesCell).map { RichBlockTableCell(text = it) }
 }

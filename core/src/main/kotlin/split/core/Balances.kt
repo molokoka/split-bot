@@ -25,3 +25,6 @@ fun computeBalances(
 
     return balances
 }
+
+fun distinctCurrencies(expenses: List<Expense>, settlements: List<Settlement>): List<String> =
+    (expenses.map { it.currency } + settlements.map { it.currency }).distinct()

@@ -13,10 +13,10 @@ class SettlementsCommand(
     private val telegramApi: TelegramApi,
 ) {
     suspend fun handle(context: CommandContext) {
-        val group = groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
-        val settlements = settlementRepository.listActive(context.groupId, group.defaultCurrency)
-            .sortedByDescending { it.createdAt }
-            .take(10)
+        groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
+        val settlements = settlementRepository.listActive(context.groupId)
+            .sortedBy { it.createdAt }
+            .takeLast(10)
         val members = memberRepository.findByGroup(context.groupId)
         val usernames = platformDirectory.findUsernames(IdentityResolver.PLATFORM, members.map { it.id })
 

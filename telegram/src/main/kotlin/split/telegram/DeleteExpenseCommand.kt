@@ -19,8 +19,8 @@ class DeleteExpenseCommand(
             return
         }
 
-        val group = groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
-        val expense = expenseRepository.listActive(context.groupId, group.defaultCurrency)
+        groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
+        val expense = expenseRepository.listActive(context.groupId)
             .firstOrNull { it.id.value.startsWith(idPrefix, ignoreCase = true) }
 
         if (expense == null) {

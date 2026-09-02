@@ -7,12 +7,14 @@ import java.math.BigDecimal
 import java.time.Instant
 import split.core.DebtPayment
 import split.core.Expense
+import split.core.ExpenseHistoryEvent
 import split.core.ExpenseId
 import split.core.ExpenseShare
 import split.core.GroupId
 import split.core.Member
 import split.core.MemberId
 import split.core.Settlement
+import split.core.SettlementHistoryEvent
 import split.core.SettlementId
 import split.core.SplitType
 
@@ -207,7 +209,7 @@ class MessageFormattingSpec : StringSpec({
 
     "buildExpenseListMessage explains there's nothing yet" {
         buildExpenseListMessage(emptyList(), members) shouldBe
-            InputRichMessage(blocks = listOf(RichBlockParagraph("No expenses yet — use /add to log one.")))
+            InputRichMessage(blocks = listOf(RichBlockParagraph("No expenses yet — use /split to log one.")))
     }
 
     "buildSettlementListMessage shows the date, payer, payee, and amount of each settlement" {
@@ -269,45 +271,195 @@ class MessageFormattingSpec : StringSpec({
     }
 
     "formatBalances phrases payments relative to the viewer" {
-        val payments = listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00")))
+        val payments = mapOf("USD" to listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00"))))
 
-        formatBalances(payments, members, viewerId = alice.id, currency = "USD") shouldBe "Balances:\n\nBob owes you 30.00 USD"
-        formatBalances(payments, members, viewerId = bob.id, currency = "USD") shouldBe "Balances:\n\nYou owe Alice 30.00 USD"
+        formatBalances(payments, members, viewerId = alice.id) shouldBe "Balances:\n\nBob owes you 30.00 USD"
+        formatBalances(payments, members, viewerId = bob.id) shouldBe "Balances:\n\nYou owe Alice 30.00 USD"
     }
 
     "formatBalances names a member by @username once one is known" {
-        val payments = listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00")))
+        val payments = mapOf("USD" to listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00"))))
 
-        formatBalances(payments, members, viewerId = alice.id, currency = "USD", usernames = mapOf(bob.id to "bobby")) shouldBe
+        formatBalances(payments, members, viewerId = alice.id, usernames = mapOf(bob.id to "bobby")) shouldBe
             "Balances:\n\n@bobby owes you 30.00 USD"
     }
 
     "formatBalances says everyone's settled up when there's nothing relevant" {
-        formatBalances(emptyList(), members, viewerId = alice.id, currency = "USD") shouldBe "You're all settled up!"
+        formatBalances(emptyMap(), members, viewerId = alice.id) shouldBe "You're all settled up!"
+    }
+
+    "formatBalances lists every currency the viewer has a stake in, skipping any that are settled up" {
+        val payments = mapOf(
+            "USD" to listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00"))),
+            "EUR" to emptyList(),
+            "GBP" to listOf(DebtPayment(from = alice.id, to = bob.id, amount = BigDecimal("20.00"))),
+        )
+
+        formatBalances(payments, members, viewerId = alice.id) shouldBe
+            "Balances:\n\nYou owe Bob 20.00 GBP\nBob owes you 30.00 USD"
     }
 
     "formatBalances fails loudly if a payment references a member outside the group" {
-        val payments = listOf(DebtPayment(from = MemberId("not-a-member"), to = alice.id, amount = BigDecimal("30.00")))
+        val payments = mapOf("USD" to listOf(DebtPayment(from = MemberId("not-a-member"), to = alice.id, amount = BigDecimal("30.00"))))
 
-        shouldThrow<NoSuchElementException> { formatBalances(payments, members, viewerId = alice.id, currency = "USD") }
+        shouldThrow<NoSuchElementException> { formatBalances(payments, members, viewerId = alice.id) }
     }
 
     "formatSettleSuggestions lists every payment" {
-        val payments = listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00")))
+        val payments = mapOf("USD" to listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00"))))
 
-        formatSettleSuggestions(payments, members, currency = "USD") shouldBe "Suggested settlements:\n\nBob pays Alice 30.00 USD"
+        formatSettleSuggestions(payments, members) shouldBe "Suggested settlements:\n\nBob to pay Alice 30.00 USD"
     }
 
     "formatSettleSuggestions names members by @username once known" {
-        val payments = listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00")))
+        val payments = mapOf("USD" to listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00"))))
 
         formatSettleSuggestions(
-            payments, members, currency = "USD",
+            payments, members,
             usernames = mapOf(bob.id to "bobby", alice.id to "alice_w"),
-        ) shouldBe "Suggested settlements:\n\n@bobby pays @alice_w 30.00 USD"
+        ) shouldBe "Suggested settlements:\n\n@bobby to pay @alice_w 30.00 USD"
     }
 
     "formatSettleSuggestions says everyone's settled up when there's nothing to do" {
-        formatSettleSuggestions(emptyList(), members, currency = "USD") shouldBe "Everyone's settled up — nothing to do!"
+        formatSettleSuggestions(emptyMap(), members) shouldBe "Everyone's settled up — nothing to do!"
+    }
+
+    "formatSettleSuggestions lists every currency that still needs a payment, skipping settled ones" {
+        val payments = mapOf(
+            "USD" to listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00"))),
+            "EUR" to emptyList(),
+            "GBP" to listOf(DebtPayment(from = alice.id, to = bob.id, amount = BigDecimal("20.00"))),
+        )
+
+        formatSettleSuggestions(payments, members) shouldBe
+            "Suggested settlements:\n\nAlice to pay Bob 20.00 GBP\nBob to pay Alice 30.00 USD"
+    }
+
+    "buildHistoryMessage shows the actual pairwise debt after an expense and a settlement, oldest first" {
+        val dinner = Expense(
+            id = ExpenseId("e1"),
+            groupId = GroupId("g1"),
+            currency = "USD",
+            description = "dinner",
+            amount = BigDecimal("90.00"),
+            payerId = alice.id,
+            splitType = SplitType.EQUAL,
+            createdBy = alice.id,
+            createdAt = Instant.parse("2026-08-27T00:00:00Z"),
+            shares = listOf(ExpenseShare(alice.id, BigDecimal("45.00")), ExpenseShare(bob.id, BigDecimal("45.00"))),
+        )
+        val settlement = Settlement(
+            id = SettlementId("s1"),
+            groupId = GroupId("g1"),
+            currency = "USD",
+            fromMemberId = bob.id,
+            toMemberId = alice.id,
+            amount = BigDecimal("45.00"),
+            createdBy = bob.id,
+            createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+        )
+        val events = listOf(
+            ExpenseHistoryEvent(dinner, mapOf(alice.id to BigDecimal("45.00"), bob.id to BigDecimal("-45.00"))),
+            SettlementHistoryEvent(settlement, mapOf(alice.id to BigDecimal("0.00"), bob.id to BigDecimal("0.00"))),
+        )
+
+        buildHistoryMessage(events, members) shouldBe InputRichMessage(
+            blocks = listOf(
+                RichBlockTable(
+                    cells = listOf(
+                        listOf(
+                            RichBlockTableCell("Event", isHeader = true),
+                            RichBlockTableCell("Balances", isHeader = true),
+                        ),
+                        listOf(
+                            RichBlockTableCell("2026-08-27 · dinner — Alice paid 90.00 USD"),
+                            RichBlockTableCell("Bob owes Alice 45.00 USD"),
+                        ),
+                        listOf(
+                            RichBlockTableCell("2026-08-28 · Bob paid Alice 45.00 USD"),
+                            RichBlockTableCell("Everyone's settled up in USD"),
+                        ),
+                    ),
+                    caption = "Last 20 events:",
+                ),
+            ),
+        )
+    }
+
+    "buildHistoryMessage names who owes whom even with three or more members, not just a net figure" {
+        val carol = Member(MemberId("carol"), "Carol")
+        val threeMembers = listOf(alice, bob, carol)
+        val dinner = Expense(
+            id = ExpenseId("e1"),
+            groupId = GroupId("g1"),
+            currency = "USD",
+            description = "dinner",
+            amount = BigDecimal("90.00"),
+            payerId = alice.id,
+            splitType = SplitType.EQUAL,
+            createdBy = alice.id,
+            createdAt = Instant.parse("2026-08-27T00:00:00Z"),
+            shares = listOf(
+                ExpenseShare(alice.id, BigDecimal("30.00")),
+                ExpenseShare(bob.id, BigDecimal("30.00")),
+                ExpenseShare(carol.id, BigDecimal("30.00")),
+            ),
+        )
+        val events = listOf(
+            ExpenseHistoryEvent(
+                dinner,
+                mapOf(alice.id to BigDecimal("60.00"), bob.id to BigDecimal("-30.00"), carol.id to BigDecimal("-30.00")),
+            ),
+        )
+
+        val row = (buildHistoryMessage(events, threeMembers).blocks.single() as RichBlockTable).cells[1]
+        row.map { it.text } shouldBe listOf(
+            "2026-08-27 · dinner — Alice paid 90.00 USD",
+            "Bob owes Alice 30.00 USD\nCarol owes Alice 30.00 USD",
+        )
+    }
+
+    "buildHistoryMessage names members by @username once known" {
+        val settlement = Settlement(
+            id = SettlementId("s1"),
+            groupId = GroupId("g1"),
+            currency = "USD",
+            fromMemberId = bob.id,
+            toMemberId = alice.id,
+            amount = BigDecimal("45.00"),
+            createdBy = bob.id,
+            createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+        )
+        val events = listOf(SettlementHistoryEvent(settlement, mapOf(alice.id to BigDecimal("45.00"), bob.id to BigDecimal("-45.00"))))
+
+        val row = (
+            buildHistoryMessage(events, members, usernames = mapOf(bob.id to "bobby")).blocks.single()
+                as RichBlockTable
+            ).cells[1]
+        row.map { it.text } shouldBe listOf("2026-08-28 · @bobby paid Alice 45.00 USD", "@bobby owes Alice 45.00 USD")
+    }
+
+    "buildHistoryMessage shows everyone's settled up when a member hasn't been part of any event yet" {
+        val expense = Expense(
+            id = ExpenseId("e1"),
+            groupId = GroupId("g1"),
+            currency = "USD",
+            description = "coffee",
+            amount = BigDecimal("5.00"),
+            payerId = alice.id,
+            splitType = SplitType.EQUAL,
+            createdBy = alice.id,
+            createdAt = Instant.parse("2026-08-27T00:00:00Z"),
+            shares = listOf(ExpenseShare(alice.id, BigDecimal("5.00"))),
+        )
+        val events = listOf(ExpenseHistoryEvent(expense, mapOf(alice.id to BigDecimal("0.00"))))
+
+        val row = (buildHistoryMessage(events, members).blocks.single() as RichBlockTable).cells[1]
+        row.map { it.text } shouldBe listOf("2026-08-27 · coffee — Alice paid 5.00 USD", "Everyone's settled up in USD")
+    }
+
+    "buildHistoryMessage explains there's nothing yet" {
+        buildHistoryMessage(emptyList(), members) shouldBe
+            InputRichMessage(blocks = listOf(RichBlockParagraph("No history yet — use /split or /settle to get started.")))
     }
 })

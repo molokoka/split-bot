@@ -50,12 +50,12 @@ suspend fun main() {
         "help" to HelpCommand(telegramApi)::handle,
         "currency" to CurrencyCommand(groupRepository, telegramApi)::handle,
         "members" to MembersCommand(memberRepository, platformDirectory, telegramApi)::handle,
-        "add" to AddExpenseCommand(
+        "split" to SplitExpenseCommand(
             platformDirectory, groupRepository, memberRepository, expenseRepository, identityResolver, telegramApi,
         )::handle,
         "delete" to DeleteExpenseCommand(groupRepository, expenseRepository, telegramApi)::handle,
         "expenses" to ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)::handle,
-        "balances" to BalancesCommand(
+        "balance" to BalanceCommand(
             groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi,
         )::handle,
         "settle" to SettleCommand(platformDirectory, groupRepository, settlementRepository, telegramApi)::handle,
@@ -63,6 +63,9 @@ suspend fun main() {
             groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi,
         )::handle,
         "settlements" to SettlementsCommand(groupRepository, memberRepository, settlementRepository, platformDirectory, telegramApi)::handle,
+        "history" to HistoryCommand(
+            groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi,
+        )::handle,
     )
 
     val router = CommandRouter(identityResolver, handlers)
