@@ -98,6 +98,8 @@ class SplitFlowCallbackHandlerSpec : StringSpec({
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
             val bobId = resolver.resolveMember("2", "bob", "Bob")
             val groupId = resolver.resolveGroup("-100")
+            resolver.ensureGroupMembership(groupId, aliceId)
+            resolver.ensureGroupMembership(groupId, bobId)
 
             val telegramApi = FakeTelegramApi()
             val flowStore = SplitFlowStore()
@@ -113,7 +115,10 @@ class SplitFlowCallbackHandlerSpec : StringSpec({
 
             handler.handle(CallbackContext(-100, aliceId, groupId, "cbq1", messageId = 1, splitPickData(1)))
 
-            flowStore.get(-100)?.pendingParticipantId shouldBe bobId
+            val flow = flowStore.get(-100)
+            flow?.pendingParticipantId shouldBe bobId
+            flow?.pendingPromptMessageId shouldBe 1L
+            telegramApi.sentForceReplyPrompts.single() shouldBe (-100L to "How much is @bob's share? Reply to this message with an amount.")
         }
     }
 

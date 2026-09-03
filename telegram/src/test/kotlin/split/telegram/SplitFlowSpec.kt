@@ -37,9 +37,10 @@ class SplitFlowSpec : StringSpec({
             callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq1", promptMessageId, SPLIT_MODE_EXACT_DATA))
             val actionsMessageId = flowStore.get(-100)!!.actionsMessageId!!
 
-            // Tap Alice's button (on the table message, still promptMessageId), reply "50"
+            // Tap Alice's button (on the table message) — pops a dedicated ForceReply prompt
             callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq2", promptMessageId, splitPickData(0)))
-            replyHandler.handle(ReplyContext(-100, aliceId, groupId, promptMessageId, "50"))
+            val alicePromptId = flowStore.get(-100)!!.pendingPromptMessageId!!
+            replyHandler.handle(ReplyContext(-100, aliceId, groupId, alicePromptId, "50"))
 
             // Not confirmable yet — only one of two participants has an amount
             flowStore.get(-100)?.stage shouldBe SplitFlowStage.ENTERING_AMOUNTS
@@ -47,7 +48,8 @@ class SplitFlowSpec : StringSpec({
 
             // Tap Bob's button, reply "40"
             callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq3", promptMessageId, splitPickData(1)))
-            replyHandler.handle(ReplyContext(-100, aliceId, groupId, promptMessageId, "40"))
+            val bobPromptId = flowStore.get(-100)!!.pendingPromptMessageId!!
+            replyHandler.handle(ReplyContext(-100, aliceId, groupId, bobPromptId, "40"))
 
             // Tap "Confirm" (button lives on the actions message)
             callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq4", actionsMessageId, SPLIT_CONFIRM_DATA))
@@ -121,14 +123,17 @@ class SplitFlowSpec : StringSpec({
 
             // Enter Alice at 50, then Bob at 40 — total 90, ready to confirm.
             callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq2", promptMessageId, splitPickData(0)))
-            replyHandler.handle(ReplyContext(-100, aliceId, groupId, promptMessageId, "50"))
+            val aliceFirstPromptId = flowStore.get(-100)!!.pendingPromptMessageId!!
+            replyHandler.handle(ReplyContext(-100, aliceId, groupId, aliceFirstPromptId, "50"))
             callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq3", promptMessageId, splitPickData(1)))
-            replyHandler.handle(ReplyContext(-100, aliceId, groupId, promptMessageId, "40"))
+            val bobPromptId = flowStore.get(-100)!!.pendingPromptMessageId!!
+            replyHandler.handle(ReplyContext(-100, aliceId, groupId, bobPromptId, "40"))
             splitIsReadyToConfirm(listOf(aliceId, bobId), flowStore.get(-100)!!.amountsEntered, BigDecimal("90.00")) shouldBe true
 
             // Tap Alice again and change her amount to 60 — now over budget, not confirmable.
             callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq4", promptMessageId, splitPickData(0)))
-            replyHandler.handle(ReplyContext(-100, aliceId, groupId, promptMessageId, "60"))
+            val aliceSecondPromptId = flowStore.get(-100)!!.pendingPromptMessageId!!
+            replyHandler.handle(ReplyContext(-100, aliceId, groupId, aliceSecondPromptId, "60"))
 
             flowStore.get(-100)?.amountsEntered shouldBe mapOf(aliceId to BigDecimal("60"), bobId to BigDecimal("40"))
             splitIsReadyToConfirm(listOf(aliceId, bobId), flowStore.get(-100)!!.amountsEntered, BigDecimal("90.00")) shouldBe false

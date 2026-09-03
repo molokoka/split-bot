@@ -50,7 +50,11 @@ data class InlineKeyboardButton(
 @Serializable
 data class InlineKeyboardMarkup(
     @SerialName("inline_keyboard") val inlineKeyboard: List<List<InlineKeyboardButton>>,
-    @SerialName("force_reply") val forceReply: Boolean? = null,
+)
+
+@Serializable
+data class ForceReply(
+    @SerialName("force_reply") val forceReply: Boolean,
 )
 
 @Serializable
@@ -88,6 +92,14 @@ data class EditMessageTextRequest(
     val text: String,
     @SerialName("parse_mode") val parseMode: String,
     @SerialName("reply_markup") val replyMarkup: InlineKeyboardMarkup? = null,
+)
+
+@Serializable
+data class SendForceReplyRequest(
+    @SerialName("chat_id") val chatId: Long,
+    val text: String,
+    @SerialName("parse_mode") val parseMode: String,
+    @SerialName("reply_markup") val replyMarkup: ForceReply,
 )
 
 @Serializable

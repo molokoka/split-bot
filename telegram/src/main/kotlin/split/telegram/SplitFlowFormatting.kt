@@ -50,8 +50,10 @@ fun splitParticipantKeyboard(
         val label = if (entered != null) "$name ✓ ${formatAmount(entered, currency)}" else name
         InlineKeyboardButton(text = label, callbackData = splitPickData(index))
     }
-    return InlineKeyboardMarkup(inlineKeyboard = buttons.map { listOf(it) }, forceReply = true)
+    return InlineKeyboardMarkup(inlineKeyboard = buttons.map { listOf(it) })
 }
+
+fun splitAmountPromptText(name: String): String = "How much is $name's share? Reply to this message with an amount."
 
 fun splitActionsText(amountsEntered: Map<MemberId, BigDecimal>, amount: BigDecimal, currency: String): String {
     val entered = amountsEntered.values.fold(BigDecimal.ZERO) { acc, v -> acc + v }

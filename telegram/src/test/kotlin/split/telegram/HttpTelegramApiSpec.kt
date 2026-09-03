@@ -142,6 +142,18 @@ class HttpTelegramApiSpec : StringSpec({
         requests.single().url.toString() shouldBe "https://api.telegram.org/bottok/editMessageText"
     }
 
+    "sendForceReplyPrompt posts chat_id, text, and a force_reply reply_markup, returning the sent message id" {
+        val (httpClient, requests) = clientReturning("""{"ok":true,"result":{"message_id":57,"chat":{"id":-100,"type":"group"}}}""")
+        val api = HttpTelegramApi(botToken = "tok", httpClient = httpClient)
+
+        val messageId = api.sendForceReplyPrompt(chatId = -100, text = "How much is @bob's share?")
+
+        requests.single().url.toString() shouldBe "https://api.telegram.org/bottok/sendMessage"
+        requests.single().body.toByteArray().decodeToString() shouldBe
+            """{"chat_id":-100,"text":"How much is @bob's share?","parse_mode":"HTML","reply_markup":{"force_reply":true}}"""
+        messageId shouldBe 57L
+    }
+
     "answerCallbackQuery posts callback_query_id, text, and show_alert" {
         val (httpClient, requests) = clientReturning("""{"ok":true}""")
         val api = HttpTelegramApi(botToken = "tok", httpClient = httpClient)

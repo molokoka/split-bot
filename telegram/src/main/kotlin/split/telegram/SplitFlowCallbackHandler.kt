@@ -84,7 +84,10 @@ class SplitFlowCallbackHandler(
             telegramApi.answerCallbackQuery(context.callbackQueryId, "This split is no longer active.", showAlert = true)
             return
         }
-        flowStore.set(context.chatId, flow.copy(pendingParticipantId = memberId))
+        val (members, usernames) = membersAndUsernames(flow)
+        val name = mentionName(members.associateBy { it.id }.getValue(memberId), usernames)
+        val promptMessageId = telegramApi.sendForceReplyPrompt(context.chatId, splitAmountPromptText(name))
+        flowStore.set(context.chatId, flow.copy(pendingParticipantId = memberId, pendingPromptMessageId = promptMessageId))
         telegramApi.answerCallbackQuery(context.callbackQueryId)
     }
 

@@ -52,6 +52,14 @@ class HttpTelegramApi(
         return response.result.messageId
     }
 
+    override suspend fun sendForceReplyPrompt(chatId: Long, text: String): Long {
+        val response: MessageResponse = httpClient.post("$baseUrl/bot$botToken/sendMessage") {
+            contentType(ContentType.Application.Json)
+            setBody(SendForceReplyRequest(chatId, text, parseMode = "HTML", replyMarkup = ForceReply(forceReply = true)))
+        }.body()
+        return response.result.messageId
+    }
+
     override suspend fun editMessageText(chatId: Long, messageId: Long, text: String, keyboard: InlineKeyboardMarkup?) {
         httpClient.post("$baseUrl/bot$botToken/editMessageText") {
             contentType(ContentType.Application.Json)

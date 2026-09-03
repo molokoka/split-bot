@@ -4,6 +4,7 @@ class FakeTelegramApi : TelegramApi {
     val sentMessages = mutableListOf<Pair<Long, String>>()
     val sentRichMessages = mutableListOf<Pair<Long, InputRichMessage>>()
     val sentKeyboards = mutableListOf<InlineKeyboardMarkup?>()
+    val sentForceReplyPrompts = mutableListOf<Pair<Long, String>>()
     val editedMessages = mutableListOf<Triple<Long, Long, String>>()
     val editedRichMessages = mutableListOf<Triple<Long, Long, InputRichMessage>>()
     val editedKeyboards = mutableListOf<InlineKeyboardMarkup?>()
@@ -27,6 +28,11 @@ class FakeTelegramApi : TelegramApi {
     override suspend fun sendRichMessage(chatId: Long, richMessage: InputRichMessage, keyboard: InlineKeyboardMarkup?): Long {
         sentRichMessages += chatId to richMessage
         sentKeyboards += keyboard
+        return nextMessageId++
+    }
+
+    override suspend fun sendForceReplyPrompt(chatId: Long, text: String): Long {
+        sentForceReplyPrompts += chatId to text
         return nextMessageId++
     }
 

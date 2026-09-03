@@ -40,7 +40,7 @@ class SplitFlowFormattingSpec : StringSpec({
         )
     }
 
-    "splitParticipantKeyboard relabels a participant's button once they have an amount, without disabling it, and sets force_reply" {
+    "splitParticipantKeyboard relabels a participant's button once they have an amount, without disabling it" {
         val keyboard = splitParticipantKeyboard(
             participantIds = listOf(alice.id, bob.id),
             amountsEntered = mapOf(alice.id to BigDecimal("50.00")),
@@ -54,8 +54,11 @@ class SplitFlowFormattingSpec : StringSpec({
                 listOf(InlineKeyboardButton(text = "Alice ✓ 50.00 USD", callbackData = splitPickData(0))),
                 listOf(InlineKeyboardButton(text = "Bob", callbackData = splitPickData(1))),
             ),
-            forceReply = true,
         )
+    }
+
+    "splitAmountPromptText asks for the given name's share" {
+        splitAmountPromptText("@alice") shouldBe "How much is @alice's share? Reply to this message with an amount."
     }
 
     "splitActionsText shows the running total against the expense amount" {

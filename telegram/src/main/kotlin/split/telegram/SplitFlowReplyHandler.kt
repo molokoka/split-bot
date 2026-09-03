@@ -12,7 +12,7 @@ class SplitFlowReplyHandler(
     suspend fun handle(context: ReplyContext) {
         val flow = flowStore.get(context.chatId) ?: return
         if (flow.stage != SplitFlowStage.ENTERING_AMOUNTS) return
-        if (context.replyToMessageId != flow.promptMessageId) return
+        if (context.replyToMessageId != flow.pendingPromptMessageId) return
         if (context.memberId != flow.invokerId) return
         val pendingParticipantId = flow.pendingParticipantId ?: return
 
@@ -23,7 +23,7 @@ class SplitFlowReplyHandler(
         }
 
         val updatedAmounts = flow.amountsEntered + (pendingParticipantId to amount)
-        val updatedFlow = flow.copy(amountsEntered = updatedAmounts, pendingParticipantId = null)
+        val updatedFlow = flow.copy(amountsEntered = updatedAmounts, pendingParticipantId = null, pendingPromptMessageId = null)
         flowStore.set(context.chatId, updatedFlow)
 
         val members = memberRepository.findByGroup(flow.groupId)

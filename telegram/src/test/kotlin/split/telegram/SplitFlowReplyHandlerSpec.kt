@@ -28,12 +28,13 @@ class SplitFlowReplyHandlerSpec : StringSpec({
                 PendingSplit(
                     invokerId = aliceId, groupId = groupId, amount = BigDecimal("90.00"), currency = "USD",
                     description = "dinner", participantIds = listOf(aliceId, bobId), promptMessageId = 1,
-                    stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2, pendingParticipantId = bobId,
+                    stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2,
+                    pendingParticipantId = bobId, pendingPromptMessageId = 3,
                 ),
             )
             val handler = SplitFlowReplyHandler(flowStore, memberRepository, platformDirectory, telegramApi)
 
-            handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 1, text = "40"))
+            handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 3, text = "40"))
 
             val flow = flowStore.get(-100)
             flow?.amountsEntered shouldBe mapOf(bobId to BigDecimal("40"))
@@ -56,12 +57,13 @@ class SplitFlowReplyHandlerSpec : StringSpec({
             val pending = PendingSplit(
                 invokerId = aliceId, groupId = groupId, amount = BigDecimal("90.00"), currency = "USD",
                 description = "dinner", participantIds = listOf(aliceId), promptMessageId = 1,
-                stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2, pendingParticipantId = aliceId,
+                stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2,
+                pendingParticipantId = aliceId, pendingPromptMessageId = 3,
             )
             flowStore.set(-100, pending)
             val handler = SplitFlowReplyHandler(flowStore, memberRepository, platformDirectory, telegramApi)
 
-            handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 1, text = "not a number"))
+            handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 3, text = "not a number"))
 
             flowStore.get(-100) shouldBe pending
             telegramApi.sentMessages.single().second shouldBe "That doesn't look like an amount — reply with a positive number with at most 2 decimal places, e.g. 42.50."
@@ -81,12 +83,13 @@ class SplitFlowReplyHandlerSpec : StringSpec({
             val pending = PendingSplit(
                 invokerId = aliceId, groupId = groupId, amount = BigDecimal("90.00"), currency = "USD",
                 description = "dinner", participantIds = listOf(aliceId), promptMessageId = 1,
-                stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2, pendingParticipantId = aliceId,
+                stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2,
+                pendingParticipantId = aliceId, pendingPromptMessageId = 3,
             )
             flowStore.set(-100, pending)
             val handler = SplitFlowReplyHandler(flowStore, memberRepository, platformDirectory, telegramApi)
 
-            handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 1, text = "33.333"))
+            handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 3, text = "33.333"))
 
             flowStore.get(-100) shouldBe pending
             telegramApi.sentMessages.single().second shouldBe "That doesn't look like an amount — reply with a positive number with at most 2 decimal places, e.g. 42.50."
@@ -106,12 +109,13 @@ class SplitFlowReplyHandlerSpec : StringSpec({
             val pending = PendingSplit(
                 invokerId = aliceId, groupId = groupId, amount = BigDecimal("90.00"), currency = "USD",
                 description = "dinner", participantIds = listOf(aliceId), promptMessageId = 1,
-                stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2, pendingParticipantId = aliceId,
+                stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2,
+                pendingParticipantId = aliceId, pendingPromptMessageId = 3,
             )
             flowStore.set(-100, pending)
             val handler = SplitFlowReplyHandler(flowStore, memberRepository, platformDirectory, telegramApi)
 
-            handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 1, text = "-5"))
+            handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 3, text = "-5"))
 
             flowStore.get(-100) shouldBe pending
             telegramApi.sentMessages.single().second shouldBe "That doesn't look like an amount — reply with a positive number with at most 2 decimal places, e.g. 42.50."
@@ -132,12 +136,13 @@ class SplitFlowReplyHandlerSpec : StringSpec({
             val pending = PendingSplit(
                 invokerId = aliceId, groupId = groupId, amount = BigDecimal("90.00"), currency = "USD",
                 description = "dinner", participantIds = listOf(aliceId, bobId), promptMessageId = 1,
-                stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2, pendingParticipantId = bobId,
+                stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2,
+                pendingParticipantId = bobId, pendingPromptMessageId = 3,
             )
             flowStore.set(-100, pending)
             val handler = SplitFlowReplyHandler(flowStore, memberRepository, platformDirectory, telegramApi)
 
-            handler.handle(ReplyContext(-100, bobId, groupId, replyToMessageId = 1, text = "40"))
+            handler.handle(ReplyContext(-100, bobId, groupId, replyToMessageId = 3, text = "40"))
 
             flowStore.get(-100) shouldBe pending
             telegramApi.sentMessages shouldBe emptyList()
@@ -157,7 +162,8 @@ class SplitFlowReplyHandlerSpec : StringSpec({
             val pending = PendingSplit(
                 invokerId = aliceId, groupId = groupId, amount = BigDecimal("90.00"), currency = "USD",
                 description = "dinner", participantIds = listOf(aliceId), promptMessageId = 1,
-                stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2, pendingParticipantId = aliceId,
+                stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2,
+                pendingParticipantId = aliceId, pendingPromptMessageId = 3,
             )
             flowStore.set(-100, pending)
             val handler = SplitFlowReplyHandler(flowStore, memberRepository, platformDirectory, telegramApi)
