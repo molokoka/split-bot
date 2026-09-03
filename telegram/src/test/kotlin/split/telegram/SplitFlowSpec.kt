@@ -61,6 +61,40 @@ class SplitFlowSpec : StringSpec({
         }
     }
 
+    "the full equal-split flow: choose Equal, expense created immediately" {
+        withTestDatabase { db ->
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val groupRepository = ExposedGroupRepository(db)
+            val memberRepository = ExposedMemberRepository(db)
+            val expenseRepository = ExposedExpenseRepository(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+
+            val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            val groupId = resolver.resolveGroup("-100")
+            resolver.ensureGroupMembership(groupId, aliceId)
+            val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
+
+            val telegramApi = FakeTelegramApi()
+            val flowStore = SplitFlowStore()
+            val splitCommand = SplitExpenseCommand(
+                platformDirectory, groupRepository, resolver, telegramApi, flowStore,
+            )
+            val callbackHandler = SplitFlowCallbackHandler(flowStore, groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)
+
+            splitCommand.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner @bobby"))
+            val promptMessageId = flowStore.get(-100)!!.promptMessageId
+
+            callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq1", promptMessageId, SPLIT_MODE_EQUAL_DATA))
+
+            val expense = expenseRepository.listActive(groupId).single()
+            expense.shares.associate { it.memberId to it.shareAmount } shouldBe mapOf(
+                aliceId to BigDecimal("45.00"),
+                bobbyId to BigDecimal("45.00"),
+            )
+            flowStore.get(-100) shouldBe null
+        }
+    }
+
     "re-entering a participant's amount before confirming overwrites the earlier value" {
         withTestDatabase { db ->
             val platformDirectory = ExposedPlatformDirectory(db)

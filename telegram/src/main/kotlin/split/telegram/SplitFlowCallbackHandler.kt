@@ -52,9 +52,9 @@ class SplitFlowCallbackHandler(
         val (members, usernames) = membersAndUsernames(flow)
         val shares = resolveEqualSplit(flow.amount, flow.invokerId, flow.participantIds)
         val expense = createExpense(flow, SplitType.EQUAL, shares)
+        flowStore.clear(context.chatId)
 
         telegramApi.editMessageText(context.chatId, flow.promptMessageId, formatExpenseConfirmation(expense, members, usernames))
-        flowStore.clear(context.chatId)
         telegramApi.answerCallbackQuery(context.callbackQueryId)
     }
 
@@ -104,10 +104,10 @@ class SplitFlowCallbackHandler(
         }
         val (members, usernames) = membersAndUsernames(flow)
         val expense = createExpense(flow, SplitType.EXACT, shares)
+        flowStore.clear(context.chatId)
 
         telegramApi.editMessageText(context.chatId, flow.promptMessageId, formatExpenseConfirmation(expense, members, usernames))
         flow.actionsMessageId?.let { telegramApi.editMessageText(context.chatId, it, "Done.") }
-        flowStore.clear(context.chatId)
         telegramApi.answerCallbackQuery(context.callbackQueryId)
     }
 

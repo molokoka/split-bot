@@ -180,7 +180,7 @@ class CommandRouterSpec : StringSpec({
     "dispatches a non-command reply to the registered reply handler" {
         withTestDatabase { db ->
             val replies = mutableListOf<ReplyContext>()
-            val router = CommandRouter(aResolver(db), emptyMap(), replyHandler = { replies += it })
+            val router = CommandRouter(aResolver(db), emptyMap(), replyHandler = { replies += it }, isTrackedReply = { _, _ -> true })
 
             router.handleUpdate(
                 TgUpdate(
@@ -202,6 +202,31 @@ class CommandRouterSpec : StringSpec({
                 replyToMessageId = 3,
                 text = "50",
             )
+        }
+    }
+
+    "ignores a reply to an untracked message and registers no identity" {
+        withTestDatabase { db ->
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val resolver = IdentityResolver(platformDirectory, ExposedMemberRepository(db), ExposedGroupRepository(db))
+            val replies = mutableListOf<ReplyContext>()
+            val router = CommandRouter(resolver, emptyMap(), replyHandler = { replies += it })
+
+            router.handleUpdate(
+                TgUpdate(
+                    updateId = 1,
+                    message = TgMessage(
+                        messageId = 7,
+                        from = TgUser(id = 1, firstName = "Alice"),
+                        chat = TgChat(id = -1, type = "group"),
+                        text = "50",
+                        replyToMessage = TgMessage(messageId = 3, chat = TgChat(id = -1, type = "group")),
+                    ),
+                ),
+            )
+
+            replies shouldBe emptyList()
+            platformDirectory.findMember("telegram", "1") shouldBe null
         }
     }
 

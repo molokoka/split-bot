@@ -37,6 +37,7 @@ class CommandRouter(
     private val handlers: Map<String, CommandHandler>,
     private val callbackHandler: CallbackHandler? = null,
     private val replyHandler: ReplyHandler? = null,
+    private val isTrackedReply: (chatId: Long, messageId: Long) -> Boolean = { _, _ -> false },
 ) {
     suspend fun handleUpdate(update: TgUpdate) {
         val callbackQuery = update.callbackQuery
@@ -83,6 +84,7 @@ class CommandRouter(
     private suspend fun handleReply(message: TgMessage, from: TgUser, text: String) {
         val handler = replyHandler ?: return
         val replyToId = message.replyToMessage?.messageId ?: return
+        if (!isTrackedReply(message.chat.id, replyToId)) return
 
         val memberId = identityResolver.resolveMember(from.id.toString(), from.username, from.firstName)
         val groupId = identityResolver.resolveGroup(message.chat.id.toString())

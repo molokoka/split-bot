@@ -48,7 +48,7 @@ fun splitParticipantKeyboard(
         val entered = amountsEntered[memberId]
         val name = plainName(nameOf.getValue(memberId), usernames)
         val label = if (entered != null) "$name ✓ ${formatAmount(entered, currency)}" else name
-        InlineKeyboardButton(text = label, callbackData = splitPickData(index), disabled = entered != null)
+        InlineKeyboardButton(text = label, callbackData = splitPickData(index))
     }
     return InlineKeyboardMarkup(inlineKeyboard = buttons.map { listOf(it) }, forceReply = true)
 }

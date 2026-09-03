@@ -78,6 +78,9 @@ suspend fun main() {
         handlers,
         callbackHandler = splitFlowCallbackHandler::handle,
         replyHandler = splitFlowReplyHandler::handle,
+        isTrackedReply = { chatId, messageId ->
+            flowStore.get(chatId)?.let { it.promptMessageId == messageId || it.actionsMessageId == messageId } ?: false
+        },
     )
     val pollLoop = PollLoop(telegramApi, router)
 

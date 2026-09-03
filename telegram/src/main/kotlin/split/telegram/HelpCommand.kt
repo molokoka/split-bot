@@ -11,7 +11,7 @@ import split.core.GroupRepository
 // happens to hold that username.
 internal const val HELP_TEXT = """Commands:
 
-/split <code>amount</code> [<code>currency</code>] <code>description</code> <code>@mentions...</code> — log an expense you paid, split equally (currency defaults to the group's if omitted)
+/split <code>amount</code> [<code>currency</code>] <code>description</code> <code>@mentions...</code> — log an expense you paid; choose to split it equally or by exact amounts (currency defaults to the group's if omitted)
 /members — list who I recognize in this group
 /currency <code>currency</code> — set this group's default currency
 /balance — see who owes you and who you owe

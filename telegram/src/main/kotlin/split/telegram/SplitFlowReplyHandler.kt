@@ -17,8 +17,8 @@ class SplitFlowReplyHandler(
         val pendingParticipantId = flow.pendingParticipantId ?: return
 
         val amount = context.text.trim().toBigDecimalOrNull()
-        if (amount == null) {
-            telegramApi.sendMessage(context.chatId, "That doesn't look like an amount — reply with a number, e.g. 42.50.")
+        if (amount == null || amount.scale() > 2 || amount.signum() <= 0) {
+            telegramApi.sendMessage(context.chatId, "That doesn't look like an amount — reply with a positive number with at most 2 decimal places, e.g. 42.50.")
             return
         }
 

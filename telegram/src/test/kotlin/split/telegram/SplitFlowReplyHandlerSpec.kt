@@ -64,7 +64,57 @@ class SplitFlowReplyHandlerSpec : StringSpec({
             handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 1, text = "not a number"))
 
             flowStore.get(-100) shouldBe pending
-            telegramApi.sentMessages.single().second shouldBe "That doesn't look like an amount — reply with a number, e.g. 42.50."
+            telegramApi.sentMessages.single().second shouldBe "That doesn't look like an amount — reply with a positive number with at most 2 decimal places, e.g. 42.50."
+        }
+    }
+
+    "a reply with more than 2 decimal places doesn't touch state and asks again" {
+        withTestDatabase { db ->
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val memberRepository = ExposedMemberRepository(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, ExposedGroupRepository(db))
+            val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            val groupId = resolver.resolveGroup("-100")
+
+            val telegramApi = FakeTelegramApi()
+            val flowStore = SplitFlowStore()
+            val pending = PendingSplit(
+                invokerId = aliceId, groupId = groupId, amount = BigDecimal("90.00"), currency = "USD",
+                description = "dinner", participantIds = listOf(aliceId), promptMessageId = 1,
+                stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2, pendingParticipantId = aliceId,
+            )
+            flowStore.set(-100, pending)
+            val handler = SplitFlowReplyHandler(flowStore, memberRepository, platformDirectory, telegramApi)
+
+            handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 1, text = "33.333"))
+
+            flowStore.get(-100) shouldBe pending
+            telegramApi.sentMessages.single().second shouldBe "That doesn't look like an amount — reply with a positive number with at most 2 decimal places, e.g. 42.50."
+        }
+    }
+
+    "a non-positive amount reply doesn't touch state and asks again" {
+        withTestDatabase { db ->
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val memberRepository = ExposedMemberRepository(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, ExposedGroupRepository(db))
+            val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            val groupId = resolver.resolveGroup("-100")
+
+            val telegramApi = FakeTelegramApi()
+            val flowStore = SplitFlowStore()
+            val pending = PendingSplit(
+                invokerId = aliceId, groupId = groupId, amount = BigDecimal("90.00"), currency = "USD",
+                description = "dinner", participantIds = listOf(aliceId), promptMessageId = 1,
+                stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2, pendingParticipantId = aliceId,
+            )
+            flowStore.set(-100, pending)
+            val handler = SplitFlowReplyHandler(flowStore, memberRepository, platformDirectory, telegramApi)
+
+            handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 1, text = "-5"))
+
+            flowStore.get(-100) shouldBe pending
+            telegramApi.sentMessages.single().second shouldBe "That doesn't look like an amount — reply with a positive number with at most 2 decimal places, e.g. 42.50."
         }
     }
 
