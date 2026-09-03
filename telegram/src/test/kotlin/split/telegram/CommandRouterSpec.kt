@@ -103,4 +103,144 @@ class CommandRouterSpec : StringSpec({
             platformDirectory.findMember("telegram", "1") shouldBe null
         }
     }
+
+    "dispatches a callback_query to the registered callback handler" {
+        withTestDatabase { db ->
+            val callbacks = mutableListOf<CallbackContext>()
+            val router = CommandRouter(aResolver(db), emptyMap(), callbackHandler = { callbacks += it })
+
+            router.handleUpdate(
+                TgUpdate(
+                    updateId = 1,
+                    callbackQuery = TgCallbackQuery(
+                        id = "cbq1",
+                        from = TgUser(id = 1, firstName = "Alice"),
+                        message = TgMessage(messageId = 42, chat = TgChat(id = -1, type = "group")),
+                        data = "split:mode:equal",
+                    ),
+                ),
+            )
+
+            callbacks.single() shouldBe CallbackContext(
+                chatId = -1,
+                memberId = callbacks.single().memberId,
+                groupId = callbacks.single().groupId,
+                callbackQueryId = "cbq1",
+                messageId = 42,
+                data = "split:mode:equal",
+            )
+        }
+    }
+
+    "does nothing with a callback_query when no callback handler is registered" {
+        withTestDatabase { db ->
+            val router = CommandRouter(aResolver(db), emptyMap())
+
+            router.handleUpdate(
+                TgUpdate(
+                    updateId = 1,
+                    callbackQuery = TgCallbackQuery(
+                        id = "cbq1",
+                        from = TgUser(id = 1, firstName = "Alice"),
+                        message = TgMessage(messageId = 42, chat = TgChat(id = -1, type = "group")),
+                        data = "split:mode:equal",
+                    ),
+                ),
+            )
+        }
+    }
+
+    "ignores a callback_query with no message or no data" {
+        withTestDatabase { db ->
+            val callbacks = mutableListOf<CallbackContext>()
+            val router = CommandRouter(aResolver(db), emptyMap(), callbackHandler = { callbacks += it })
+
+            router.handleUpdate(
+                TgUpdate(
+                    updateId = 1,
+                    callbackQuery = TgCallbackQuery(id = "cbq1", from = TgUser(id = 1, firstName = "Alice"), message = null, data = "x"),
+                ),
+            )
+            router.handleUpdate(
+                TgUpdate(
+                    updateId = 2,
+                    callbackQuery = TgCallbackQuery(
+                        id = "cbq2",
+                        from = TgUser(id = 1, firstName = "Alice"),
+                        message = TgMessage(messageId = 42, chat = TgChat(id = -1, type = "group")),
+                        data = null,
+                    ),
+                ),
+            )
+
+            callbacks shouldBe emptyList()
+        }
+    }
+
+    "dispatches a non-command reply to the registered reply handler" {
+        withTestDatabase { db ->
+            val replies = mutableListOf<ReplyContext>()
+            val router = CommandRouter(aResolver(db), emptyMap(), replyHandler = { replies += it })
+
+            router.handleUpdate(
+                TgUpdate(
+                    updateId = 1,
+                    message = TgMessage(
+                        messageId = 7,
+                        from = TgUser(id = 1, firstName = "Alice"),
+                        chat = TgChat(id = -1, type = "group"),
+                        text = "50",
+                        replyToMessage = TgMessage(messageId = 3, chat = TgChat(id = -1, type = "group")),
+                    ),
+                ),
+            )
+
+            replies.single() shouldBe ReplyContext(
+                chatId = -1,
+                memberId = replies.single().memberId,
+                groupId = replies.single().groupId,
+                replyToMessageId = 3,
+                text = "50",
+            )
+        }
+    }
+
+    "does not treat a command as a reply even when it replies to a message" {
+        withTestDatabase { db ->
+            val replies = mutableListOf<ReplyContext>()
+            val helpInvocations = mutableListOf<CommandContext>()
+            val router = CommandRouter(
+                aResolver(db),
+                mapOf("help" to { context: CommandContext -> helpInvocations += context }),
+                replyHandler = { replies += it },
+            )
+
+            router.handleUpdate(
+                TgUpdate(
+                    updateId = 1,
+                    message = TgMessage(
+                        messageId = 7,
+                        from = TgUser(id = 1, firstName = "Alice"),
+                        chat = TgChat(id = -1, type = "group"),
+                        text = "/help",
+                        replyToMessage = TgMessage(messageId = 3, chat = TgChat(id = -1, type = "group")),
+                    ),
+                ),
+            )
+
+            helpInvocations.size shouldBe 1
+            replies shouldBe emptyList()
+        }
+    }
+
+    "ignores a plain-text message that isn't a reply, even with a reply handler registered" {
+        withTestDatabase { db ->
+            val replies = mutableListOf<ReplyContext>()
+            val router = CommandRouter(aResolver(db), emptyMap(), replyHandler = { replies += it })
+
+            router.handleUpdate(anUpdate("just chatting"))
+
+            replies shouldBe emptyList()
+        }
+    }
 })
