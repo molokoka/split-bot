@@ -27,7 +27,7 @@ class SplitExpenseCommandSpec : StringSpec({
             val draftStore = SplitDraftStore()
             val flowStore = SplitFlowStore()
             val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-            val command = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val command = SplitExpenseCommand(platformDirectory, groupRepository, memberRepository, resolver, telegramApi, draftStore, flowStarter)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner @bobby"))
 
@@ -62,7 +62,7 @@ class SplitExpenseCommandSpec : StringSpec({
             val draftStore = SplitDraftStore()
             val flowStore = SplitFlowStore()
             val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-            val command = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val command = SplitExpenseCommand(platformDirectory, groupRepository, memberRepository, resolver, telegramApi, draftStore, flowStarter)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner @stranger"))
 
@@ -91,7 +91,7 @@ class SplitExpenseCommandSpec : StringSpec({
             val draftStore = SplitDraftStore()
             val flowStore = SplitFlowStore()
             val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-            val command = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val command = SplitExpenseCommand(platformDirectory, groupRepository, memberRepository, resolver, telegramApi, draftStore, flowStarter)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, "equal 90 dinner @bobby"))
 
@@ -121,7 +121,7 @@ class SplitExpenseCommandSpec : StringSpec({
             val draftStore = SplitDraftStore()
             val flowStore = SplitFlowStore()
             val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-            val command = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val command = SplitExpenseCommand(platformDirectory, groupRepository, memberRepository, resolver, telegramApi, draftStore, flowStarter)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner @bobby 40"))
 
@@ -151,7 +151,7 @@ class SplitExpenseCommandSpec : StringSpec({
             val draftStore = SplitDraftStore()
             val flowStore = SplitFlowStore()
             val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-            val command = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val command = SplitExpenseCommand(platformDirectory, groupRepository, memberRepository, resolver, telegramApi, draftStore, flowStarter)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, "exact 90 dinner @bobby"))
 
@@ -176,7 +176,7 @@ class SplitExpenseCommandSpec : StringSpec({
             val draftStore = SplitDraftStore()
             val flowStore = SplitFlowStore()
             val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-            val command = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val command = SplitExpenseCommand(platformDirectory, groupRepository, memberRepository, resolver, telegramApi, draftStore, flowStarter)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
@@ -205,13 +205,41 @@ class SplitExpenseCommandSpec : StringSpec({
             val draftStore = SplitDraftStore()
             val flowStore = SplitFlowStore()
             val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-            val command = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val command = SplitExpenseCommand(platformDirectory, groupRepository, memberRepository, resolver, telegramApi, draftStore, flowStarter)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, "dinner"))
 
             val draft = draftStore.get(-100)
             draft?.awaiting shouldBe SplitDraftField.AMOUNT
             draft?.description shouldBe "dinner"
+        }
+    }
+
+    "/split 90 dinner with no mentions asks for participants, listing known group members" {
+        withTestDatabase { db ->
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val groupRepository = ExposedGroupRepository(db)
+            val memberRepository = ExposedMemberRepository(db)
+            val expenseRepository = ExposedExpenseRepository(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+
+            val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            val groupId = resolver.resolveGroup("-100001")
+            resolver.ensureGroupMembership(groupId, aliceId)
+            val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
+            resolver.ensureGroupMembership(groupId, bobbyId)
+
+            val telegramApi = FakeTelegramApi()
+            val draftStore = SplitDraftStore()
+            val flowStore = SplitFlowStore()
+            val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
+            val command = SplitExpenseCommand(platformDirectory, groupRepository, memberRepository, resolver, telegramApi, draftStore, flowStarter)
+
+            command.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner"))
+
+            draftStore.get(-100)?.awaiting shouldBe SplitDraftField.PARTICIPANTS
+            telegramApi.sentForceReplyPrompts.single().second shouldBe
+                "Who split this with you? Reply with their usernames. I know <code>@bobby</code> in this group."
         }
     }
 
@@ -232,7 +260,7 @@ class SplitExpenseCommandSpec : StringSpec({
             val draftStore = SplitDraftStore()
             val flowStore = SplitFlowStore()
             val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-            val command = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val command = SplitExpenseCommand(platformDirectory, groupRepository, memberRepository, resolver, telegramApi, draftStore, flowStarter)
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, "@bobby"))
 

@@ -51,7 +51,7 @@ suspend fun main() {
         flowStore, groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi,
     )
     val splitFlowReplyHandler = SplitFlowReplyHandler(flowStore, memberRepository, platformDirectory, telegramApi)
-    val splitDraftReplyHandler = SplitDraftReplyHandler(draftStore, platformDirectory, telegramApi, flowStarter)
+    val splitDraftReplyHandler = SplitDraftReplyHandler(draftStore, memberRepository, platformDirectory, telegramApi, flowStarter)
 
     val handlers = mapOf(
         "start" to StartCommand(groupRepository, telegramApi)::handle,
@@ -59,7 +59,7 @@ suspend fun main() {
         "currency" to CurrencyCommand(groupRepository, telegramApi)::handle,
         "members" to MembersCommand(memberRepository, platformDirectory, telegramApi)::handle,
         "split" to SplitExpenseCommand(
-            platformDirectory, groupRepository, identityResolver, telegramApi, draftStore, flowStarter,
+            platformDirectory, groupRepository, memberRepository, identityResolver, telegramApi, draftStore, flowStarter,
         )::handle,
         "delete" to DeleteExpenseCommand(groupRepository, expenseRepository, telegramApi)::handle,
         "expenses" to ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)::handle,

@@ -2,11 +2,13 @@ package split.telegram
 
 import split.core.GroupRepository
 import split.core.MemberId
+import split.core.MemberRepository
 import split.core.PlatformDirectory
 
 class SplitExpenseCommand(
     private val platformDirectory: PlatformDirectory,
     private val groupRepository: GroupRepository,
+    private val memberRepository: MemberRepository,
     private val identityResolver: IdentityResolver,
     private val telegramApi: TelegramApi,
     private val draftStore: SplitDraftStore,
@@ -62,7 +64,12 @@ class SplitExpenseCommand(
             parsed.amount == null -> SplitDraftField.AMOUNT
             else -> SplitDraftField.PARTICIPANTS
         }
-        val promptMessageId = telegramApi.sendForceReplyPrompt(context.chatId, splitDraftPromptText(awaiting, parsed.currency))
+        val knownUsernames = if (awaiting == SplitDraftField.PARTICIPANTS) {
+            knownUsernamesExcluding(memberRepository, platformDirectory, context.groupId, context.memberId)
+        } else {
+            emptyList()
+        }
+        val promptMessageId = telegramApi.sendForceReplyPrompt(context.chatId, splitDraftPromptText(awaiting, parsed.currency, knownUsernames))
         draftStore.set(
             context.chatId,
             PendingSplitDraft(

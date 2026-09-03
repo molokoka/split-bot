@@ -17,6 +17,17 @@ import java.time.Clock
 import java.time.Instant
 import java.util.UUID
 
+internal suspend fun knownUsernamesExcluding(
+    memberRepository: MemberRepository,
+    platformDirectory: PlatformDirectory,
+    groupId: GroupId,
+    excluding: MemberId,
+): List<String> {
+    val members = memberRepository.findByGroup(groupId).filter { it.id != excluding }
+    val usernames = platformDirectory.findUsernames(IdentityResolver.PLATFORM, members.map { it.id })
+    return members.mapNotNull { usernames[it.id] }
+}
+
 class SplitFlowStarter(
     private val flowStore: SplitFlowStore,
     private val memberRepository: MemberRepository,

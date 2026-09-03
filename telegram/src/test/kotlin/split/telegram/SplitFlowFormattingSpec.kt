@@ -61,6 +61,16 @@ class SplitFlowFormattingSpec : StringSpec({
         splitAmountPromptText("@alice") shouldBe "How much is @alice's share? Reply to this message with an amount."
     }
 
+    "splitDraftPromptText for participants falls back to a generic example with no known usernames" {
+        splitDraftPromptText(SplitDraftField.PARTICIPANTS, "USD") shouldBe
+            "Who split this with you? Reply with their usernames, e.g. <code>@alice @bob</code>."
+    }
+
+    "splitDraftPromptText for participants lists known usernames, each wrapped in code" {
+        splitDraftPromptText(SplitDraftField.PARTICIPANTS, "USD", knownUsernames = listOf("julia", "marco")) shouldBe
+            "Who split this with you? Reply with their usernames. I know <code>@julia</code>, <code>@marco</code> in this group."
+    }
+
     "splitActionsText shows the running total against the expense amount" {
         splitActionsText(
             amountsEntered = mapOf(alice.id to BigDecimal("50.00")),

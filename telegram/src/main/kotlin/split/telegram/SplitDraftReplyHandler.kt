@@ -1,12 +1,14 @@
 package split.telegram
 
 import split.core.MemberId
+import split.core.MemberRepository
 import split.core.PlatformDirectory
 
 private val amountWithOptionalCurrency = Regex("^(\\d+(?:\\.\\d+)?)(?:\\s+([A-Z]{3}))?$")
 
 class SplitDraftReplyHandler(
     private val draftStore: SplitDraftStore,
+    private val memberRepository: MemberRepository,
     private val platformDirectory: PlatformDirectory,
     private val telegramApi: TelegramApi,
     private val flowStarter: SplitFlowStarter,
@@ -63,7 +65,15 @@ class SplitDraftReplyHandler(
             else -> null
         }
         if (nextField != null) {
-            val promptMessageId = telegramApi.sendForceReplyPrompt(context.chatId, splitDraftPromptText(nextField, updated.currency))
+            val knownUsernames = if (nextField == SplitDraftField.PARTICIPANTS) {
+                knownUsernamesExcluding(memberRepository, platformDirectory, updated.groupId, updated.invokerId)
+            } else {
+                emptyList()
+            }
+            val promptMessageId = telegramApi.sendForceReplyPrompt(
+                context.chatId,
+                splitDraftPromptText(nextField, updated.currency, knownUsernames),
+            )
             draftStore.set(context.chatId, updated.copy(awaiting = nextField, promptMessageId = promptMessageId))
             return
         }
