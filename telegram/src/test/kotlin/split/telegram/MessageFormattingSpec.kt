@@ -53,7 +53,7 @@ class MessageFormattingSpec : StringSpec({
         )
 
         formatExpenseConfirmation(expense, members, usernames = mapOf(alice.id to "alice_w")) shouldBe
-            "Expense added:\n\n@alice_w paid 90.00 USD for <b>dinner</b>, split equally with Bob"
+            "Expense added:\n\n@alice_w paid 90.00 USD for <b>dinner</b>, split equally with Bob (45.00)"
     }
 
     "formatExpenseConfirmation names payer, amount, currency, and split type, without repeating the payer" {
@@ -70,7 +70,7 @@ class MessageFormattingSpec : StringSpec({
             shares = listOf(ExpenseShare(alice.id, BigDecimal("45.00")), ExpenseShare(bob.id, BigDecimal("45.00"))),
         )
 
-        formatExpenseConfirmation(expense, members) shouldBe "Expense added:\n\nAlice paid 90.00 EUR for <b>dinner</b>, split equally with Bob"
+        formatExpenseConfirmation(expense, members) shouldBe "Expense added:\n\nAlice paid 90.00 EUR for <b>dinner</b>, split equally with Bob (45.00)"
     }
 
     "formatExpenseConfirmation names the split type for EXACT and SHARES splits too" {
@@ -89,9 +89,9 @@ class MessageFormattingSpec : StringSpec({
         val shares = exact.copy(splitType = SplitType.SHARES)
 
         formatExpenseConfirmation(exact, members) shouldBe
-            "Expense added:\n\nAlice paid 90.00 USD for <b>dinner</b>, split by exact amounts with Bob"
+            "Expense added:\n\nAlice paid 90.00 USD for <b>dinner</b>, split by exact amounts with Bob (40.00)"
         formatExpenseConfirmation(shares, members) shouldBe
-            "Expense added:\n\nAlice paid 90.00 USD for <b>dinner</b>, split by shares with Bob"
+            "Expense added:\n\nAlice paid 90.00 USD for <b>dinner</b>, split by shares with Bob (40.00)"
     }
 
     "formatExpenseConfirmation omits the split clause entirely when the payer is the only participant" {

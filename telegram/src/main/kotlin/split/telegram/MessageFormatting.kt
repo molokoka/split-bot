@@ -14,7 +14,10 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 
 fun formatAmount(amount: BigDecimal, currency: String): String =
-    "${amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString()} $currency"
+    "${formatBareAmount(amount)} $currency"
+
+internal fun formatBareAmount(amount: BigDecimal): String =
+    amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString()
 
 // Every message is sent with parse_mode HTML (see HttpTelegramApi), so any user-controlled
 // text — display names, expense descriptions — must be escaped before being interpolated
@@ -53,7 +56,9 @@ fun formatExpenseConfirmation(
     val otherParticipants = expense.shares
         .filter { it.memberId != expense.payerId }
         .sortedBy { nameOf.getValue(it.memberId).displayName }
-        .joinToString(", ") { mentionName(nameOf.getValue(it.memberId), usernames) }
+        .joinToString(", ") { share ->
+            "${mentionName(nameOf.getValue(share.memberId), usernames)} (${formatBareAmount(share.shareAmount)})"
+        }
 
     return "Expense added:\n\n" + if (otherParticipants.isEmpty()) {
         base

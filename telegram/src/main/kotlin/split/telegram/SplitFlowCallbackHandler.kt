@@ -119,7 +119,7 @@ class SplitFlowCallbackHandler(
         flowStore.clear(context.chatId)
 
         telegramApi.editMessageText(context.chatId, flow.promptMessageId, formatExpenseConfirmation(expense, members, usernames))
-        flow.actionsMessageId?.let { telegramApi.editMessageText(context.chatId, it, "Done.") }
+        flow.actionsMessageId?.let { telegramApi.editMessageText(context.chatId, it, formatExpenseConfirmation(expense, members, usernames)) }
         telegramApi.answerCallbackQuery(context.callbackQueryId)
     }
 
