@@ -49,7 +49,7 @@ class SplitDraftReplyHandler(
     private suspend fun handleParticipants(context: ReplyContext, draft: PendingSplitDraft) {
         val mentions = extractMentions(context.text)
         if (mentions.isEmpty()) {
-            telegramApi.sendMessage(context.chatId, "Mention at least one participant, e.g. @alice @bob.")
+            telegramApi.sendMessage(context.chatId, "Mention at least one participant, e.g. <code>@alice @bob</code>.")
             return
         }
         advance(context, draft.copy(mentionUsernames = mentions))
@@ -72,7 +72,7 @@ class SplitDraftReplyHandler(
         for (username in updated.mentionUsernames) {
             val participantId = platformDirectory.findMemberByUsername(IdentityResolver.PLATFORM, username)
             if (participantId == null) {
-                telegramApi.sendMessage(context.chatId, "I don't recognize @$username yet — ask them to run /start with me first.")
+                telegramApi.sendMessage(context.chatId, "I don't recognize <code>@$username</code> yet — ask them to run /start with me first.")
                 return
             }
             mentionedMemberIds += participantId

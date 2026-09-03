@@ -70,7 +70,7 @@ class SplitExpenseCommandSpec : StringSpec({
             flowStore.get(-100) shouldBe null
             draftStore.get(-100) shouldBe null
             telegramApi.sentMessages.single().second shouldBe
-                "I don't recognize @stranger yet — ask them to run /start with me first."
+                "I don't recognize <code>@stranger</code> yet — ask them to run /start with me first."
         }
     }
 

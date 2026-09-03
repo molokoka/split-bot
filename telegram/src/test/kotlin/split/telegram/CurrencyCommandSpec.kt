@@ -24,7 +24,7 @@ class CurrencyCommandSpec : StringSpec({
                 -100L to (
                     "Currency updated:\n\n" +
                         "This group's default currency is now EUR — new expenses use EUR unless you set a " +
-                        "different currency inline, e.g. /split 90 USD dinner @bob."
+                        "different currency inline, e.g. <code>/split 90 USD dinner @bob</code>."
                     ),
             )
         }

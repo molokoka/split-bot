@@ -199,7 +199,7 @@ class SplitDraftReplyHandlerSpec : StringSpec({
 
             expenseRepository.listActive(groupId) shouldBe emptyList()
             telegramApi.sentMessages.last().second shouldBe
-                "I don't recognize @stranger yet — ask them to run /start with me first."
+                "I don't recognize <code>@stranger</code> yet — ask them to run /start with me first."
         }
     }
 

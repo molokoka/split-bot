@@ -29,7 +29,7 @@ class SettleCommand(
         if (counterpartyId == null) {
             telegramApi.sendMessage(
                 context.chatId,
-                "I don't recognize @${parsed.counterpartyUsername} yet — ask them to run /start with me first.",
+                "I don't recognize <code>@${parsed.counterpartyUsername}</code> yet — ask them to run /start with me first.",
             )
             return
         }

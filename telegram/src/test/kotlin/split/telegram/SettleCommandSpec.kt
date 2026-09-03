@@ -70,7 +70,7 @@ class SettleCommandSpec : StringSpec({
 
             settlementRepository.listActive(groupId) shouldBe emptyList()
             telegramApi.sentMessages.single().second shouldBe
-                "I don't recognize @stranger yet — ask them to run /start with me first."
+                "I don't recognize <code>@stranger</code> yet — ask them to run /start with me first."
         }
     }
 })

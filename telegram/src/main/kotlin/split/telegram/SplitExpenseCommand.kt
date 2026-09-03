@@ -28,7 +28,7 @@ class SplitExpenseCommand(
             if (participantId == null) {
                 telegramApi.sendMessage(
                     context.chatId,
-                    "I don't recognize @$username yet — ask them to run /start with me first.",
+                    "I don't recognize <code>@$username</code> yet — ask them to run /start with me first.",
                 )
                 return
             }

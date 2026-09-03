@@ -58,7 +58,7 @@ fun splitAmountPromptText(name: String): String = "How much is $name's share? Re
 fun splitDraftPromptText(awaiting: SplitDraftField, currency: String): String = when (awaiting) {
     SplitDraftField.DESCRIPTION -> "What's this expense for? Reply with a short description, e.g. \"dinner\"."
     SplitDraftField.AMOUNT -> "How much, and in what currency? Reply with an amount, e.g. 90 or 90 EUR (defaults to $currency)."
-    SplitDraftField.PARTICIPANTS -> "Who split this with you? Reply with their @mentions, e.g. @alice @bob."
+    SplitDraftField.PARTICIPANTS -> "Who split this with you? Reply with their usernames, e.g. <code>@alice @bob</code>."
 }
 
 fun splitActionsText(amountsEntered: Map<MemberId, BigDecimal>, amount: BigDecimal, currency: String): String {
