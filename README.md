@@ -71,3 +71,7 @@ rm -f split-manual-test.db*
 ```
 
 (Matches `SPLIT_DB_PATH` above — adjust if you used a different path. The default `*` glob also removes SQLite's `-wal`/`-shm` sidecar files.)
+
+## License
+
+GNU General Public License v3.0 — see [LICENSE](LICENSE).
