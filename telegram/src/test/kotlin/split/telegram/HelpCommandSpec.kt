@@ -39,7 +39,7 @@ class HelpCommandSpec : StringSpec({
                 -1L to (
                     "Hi! I'll help you split expenses in this group.\n\n" +
                         "This group's default currency is USD — change it anytime with /currency.\n\n" +
-                        "Before you can @mention someone in /split, they need to send me /start too.\n\n" +
+                        "Before you can mention someone in /split, they need to send me /start too.\n\n" +
                         HELP_TEXT
                     ),
             )
