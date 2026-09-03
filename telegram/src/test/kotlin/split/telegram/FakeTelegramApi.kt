@@ -8,6 +8,7 @@ class FakeTelegramApi : TelegramApi {
     val editedMessages = mutableListOf<Triple<Long, Long, String>>()
     val editedRichMessages = mutableListOf<Triple<Long, Long, InputRichMessage>>()
     val editedKeyboards = mutableListOf<InlineKeyboardMarkup?>()
+    val deletedMessages = mutableListOf<Pair<Long, Long>>()
     val answeredCallbacks = mutableListOf<Triple<String, String?, Boolean>>()
     var chatAdministrators: List<TgChatMember> = emptyList()
     var updatesToReturn: List<TgUpdate> = emptyList()
@@ -44,6 +45,10 @@ class FakeTelegramApi : TelegramApi {
     override suspend fun editRichMessage(chatId: Long, messageId: Long, richMessage: InputRichMessage, keyboard: InlineKeyboardMarkup?) {
         editedRichMessages += Triple(chatId, messageId, richMessage)
         editedKeyboards += keyboard
+    }
+
+    override suspend fun deleteMessage(chatId: Long, messageId: Long) {
+        deletedMessages += chatId to messageId
     }
 
     override suspend fun answerCallbackQuery(callbackQueryId: String, text: String?, showAlert: Boolean) {

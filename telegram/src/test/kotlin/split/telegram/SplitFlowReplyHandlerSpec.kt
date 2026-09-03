@@ -39,10 +39,17 @@ class SplitFlowReplyHandlerSpec : StringSpec({
             val flow = flowStore.get(-100)
             flow?.amountsEntered shouldBe mapOf(bobId to BigDecimal("40"))
             flow?.pendingParticipantId shouldBe aliceId
-            flow?.pendingPromptMessageId shouldBe 1L
             telegramApi.sentForceReplyPrompts.single().second shouldBe "How much is @alice's share? Reply to this message with an amount."
             telegramApi.editedRichMessages.single().let { (chatId, messageId, _) -> chatId shouldBe -100L; messageId shouldBe 1L }
-            telegramApi.editedMessages.single().let { (chatId, messageId, _) -> chatId shouldBe -100L; messageId shouldBe 2L }
+
+            // The actions message migrates: the old one (id 2, seeded in the fixture) is
+            // deleted and a fresh one sent — id 1, the first message this handler sends.
+            telegramApi.deletedMessages.single() shouldBe (-100L to 2L)
+            telegramApi.sentMessages.single().first shouldBe -100L
+            flow?.actionsMessageId shouldBe 1L
+
+            // The next participant's ForceReply prompt is sent after that — id 2.
+            flow?.pendingPromptMessageId shouldBe 2L
         }
     }
 
@@ -76,6 +83,11 @@ class SplitFlowReplyHandlerSpec : StringSpec({
             flow?.pendingParticipantId shouldBe null
             flow?.pendingPromptMessageId shouldBe null
             telegramApi.sentForceReplyPrompts shouldBe emptyList()
+
+            // The actions message still migrates even when nothing more is pending — its
+            // updated Confirm button needs to land in the freshest message either way.
+            telegramApi.deletedMessages.single() shouldBe (-100L to 2L)
+            flow?.actionsMessageId shouldBe 1L
         }
     }
 

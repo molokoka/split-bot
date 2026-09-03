@@ -74,6 +74,13 @@ class HttpTelegramApi(
         }
     }
 
+    override suspend fun deleteMessage(chatId: Long, messageId: Long) {
+        httpClient.post("$baseUrl/bot$botToken/deleteMessage") {
+            contentType(ContentType.Application.Json)
+            setBody(DeleteMessageRequest(chatId, messageId))
+        }
+    }
+
     override suspend fun answerCallbackQuery(callbackQueryId: String, text: String?, showAlert: Boolean) {
         httpClient.post("$baseUrl/bot$botToken/answerCallbackQuery") {
             contentType(ContentType.Application.Json)

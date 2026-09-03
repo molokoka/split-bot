@@ -34,10 +34,10 @@ class SplitFlowReplyHandler(
             splitParticipantKeyboard(flow.participantIds, updatedAmounts, nameOf, usernames, flow.currency),
         )
         val canConfirm = splitIsReadyToConfirm(flow.participantIds, updatedAmounts, flow.amount)
-        flow.actionsMessageId?.let {
-            telegramApi.editMessageText(
+        val newActionsMessageId = flow.actionsMessageId?.let { oldActionsMessageId ->
+            telegramApi.deleteMessage(context.chatId, oldActionsMessageId)
+            telegramApi.sendMessage(
                 context.chatId,
-                it,
                 splitActionsText(updatedAmounts, flow.amount, flow.currency),
                 splitActionsKeyboard(canConfirm),
             )
@@ -46,9 +46,19 @@ class SplitFlowReplyHandler(
         val nextParticipantId = flow.participantIds.firstOrNull { it !in updatedAmounts }
         val updatedFlow = if (nextParticipantId != null) {
             val promptMessageId = sendParticipantAmountPrompt(context.chatId, nextParticipantId, members, usernames, telegramApi)
-            flow.copy(amountsEntered = updatedAmounts, pendingParticipantId = nextParticipantId, pendingPromptMessageId = promptMessageId)
+            flow.copy(
+                amountsEntered = updatedAmounts,
+                actionsMessageId = newActionsMessageId ?: flow.actionsMessageId,
+                pendingParticipantId = nextParticipantId,
+                pendingPromptMessageId = promptMessageId,
+            )
         } else {
-            flow.copy(amountsEntered = updatedAmounts, pendingParticipantId = null, pendingPromptMessageId = null)
+            flow.copy(
+                amountsEntered = updatedAmounts,
+                actionsMessageId = newActionsMessageId ?: flow.actionsMessageId,
+                pendingParticipantId = null,
+                pendingPromptMessageId = null,
+            )
         }
         flowStore.set(context.chatId, updatedFlow)
     }

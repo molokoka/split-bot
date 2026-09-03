@@ -37,7 +37,6 @@ class SplitFlowSpec : StringSpec({
 
             // Tap "Exact" (button lives on the mode-choice message, i.e. promptMessageId)
             callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq1", promptMessageId, SPLIT_MODE_EXACT_DATA))
-            val actionsMessageId = flowStore.get(-100)!!.actionsMessageId!!
 
             // Tap Alice's button (on the table message) — pops a dedicated ForceReply prompt
             callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq2", promptMessageId, splitPickData(0)))
@@ -53,8 +52,10 @@ class SplitFlowSpec : StringSpec({
             val bobPromptId = flowStore.get(-100)!!.pendingPromptMessageId!!
             replyHandler.handle(ReplyContext(-100, aliceId, groupId, bobPromptId, "40"))
 
-            // Tap "Confirm" (button lives on the actions message)
-            callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq4", actionsMessageId, SPLIT_CONFIRM_DATA))
+            // Tap "Confirm" — the actions message migrates (deleted + resent) on every reply,
+            // so its id must be re-read now rather than reusing the one captured earlier.
+            val latestActionsMessageId = flowStore.get(-100)!!.actionsMessageId!!
+            callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq4", latestActionsMessageId, SPLIT_CONFIRM_DATA))
 
             val expense = expenseRepository.listActive(groupId).single()
             expense.shares.associate { it.memberId to it.shareAmount } shouldBe mapOf(
@@ -91,7 +92,6 @@ class SplitFlowSpec : StringSpec({
 
             // Tap "Exact" — no participant tap follows; the first prompt (Alice's) is already pending.
             callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq1", promptMessageId, SPLIT_MODE_EXACT_DATA))
-            val actionsMessageId = flowStore.get(-100)!!.actionsMessageId!!
             flowStore.get(-100)?.pendingParticipantId shouldBe aliceId
             var promptId = flowStore.get(-100)!!.pendingPromptMessageId!!
 
@@ -105,7 +105,10 @@ class SplitFlowSpec : StringSpec({
             flowStore.get(-100)?.pendingParticipantId shouldBe null
             flowStore.get(-100)?.pendingPromptMessageId shouldBe null
 
-            callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq2", actionsMessageId, SPLIT_CONFIRM_DATA))
+            // The actions message migrates (deleted + resent) on every reply, so its id must
+            // be re-read now rather than the one captured right after choosing Exact.
+            val latestActionsMessageId = flowStore.get(-100)!!.actionsMessageId!!
+            callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq2", latestActionsMessageId, SPLIT_CONFIRM_DATA))
 
             val expense = expenseRepository.listActive(groupId).single()
             expense.shares.associate { it.memberId to it.shareAmount } shouldBe mapOf(

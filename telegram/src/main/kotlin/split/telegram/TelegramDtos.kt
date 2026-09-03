@@ -95,6 +95,12 @@ data class EditMessageTextRequest(
 )
 
 @Serializable
+data class DeleteMessageRequest(
+    @SerialName("chat_id") val chatId: Long,
+    @SerialName("message_id") val messageId: Long,
+)
+
+@Serializable
 data class SendForceReplyRequest(
     @SerialName("chat_id") val chatId: Long,
     val text: String,
