@@ -1,0 +1,74 @@
+package split.telegram
+
+import split.core.Member
+import split.core.MemberId
+import java.math.BigDecimal
+
+const val SPLIT_MODE_PROMPT = "How should this be split?"
+const val SPLIT_MODE_EQUAL_DATA = "split:mode:equal"
+const val SPLIT_MODE_EXACT_DATA = "split:mode:exact"
+const val SPLIT_CANCEL_DATA = "split:cancel"
+const val SPLIT_CONFIRM_DATA = "split:confirm"
+const val SPLIT_PICK_PREFIX = "split:pick:"
+
+fun splitPickData(index: Int): String = "$SPLIT_PICK_PREFIX$index"
+
+fun splitModeKeyboard(): InlineKeyboardMarkup = InlineKeyboardMarkup(
+    inlineKeyboard = listOf(
+        listOf(
+            InlineKeyboardButton(text = "Equal", callbackData = SPLIT_MODE_EQUAL_DATA),
+            InlineKeyboardButton(text = "Exact", callbackData = SPLIT_MODE_EXACT_DATA),
+        ),
+    ),
+)
+
+fun splitAmountsTable(
+    participantIds: List<MemberId>,
+    amountsEntered: Map<MemberId, BigDecimal>,
+    nameOf: Map<MemberId, Member>,
+    usernames: Map<MemberId, String>,
+    currency: String,
+): InputRichMessage {
+    val header = listOf("Person", "Amount").map { RichBlockTableCell(text = it, isHeader = true) }
+    val rows = participantIds.map { memberId ->
+        val amountText = amountsEntered[memberId]?.let { formatAmount(it, currency) } ?: "—"
+        listOf(RichBlockTableCell(plainName(nameOf.getValue(memberId), usernames)), RichBlockTableCell(amountText))
+    }
+    return InputRichMessage(blocks = listOf(RichBlockTable(cells = listOf(header) + rows)))
+}
+
+fun splitParticipantKeyboard(
+    participantIds: List<MemberId>,
+    amountsEntered: Map<MemberId, BigDecimal>,
+    nameOf: Map<MemberId, Member>,
+    usernames: Map<MemberId, String>,
+    currency: String,
+): InlineKeyboardMarkup {
+    val buttons = participantIds.mapIndexed { index, memberId ->
+        val entered = amountsEntered[memberId]
+        val name = plainName(nameOf.getValue(memberId), usernames)
+        val label = if (entered != null) "$name ✓ ${formatAmount(entered, currency)}" else name
+        InlineKeyboardButton(text = label, callbackData = splitPickData(index), disabled = entered != null)
+    }
+    return InlineKeyboardMarkup(inlineKeyboard = buttons.map { listOf(it) }, forceReply = true)
+}
+
+fun splitActionsText(amountsEntered: Map<MemberId, BigDecimal>, amount: BigDecimal, currency: String): String {
+    val entered = amountsEntered.values.fold(BigDecimal.ZERO) { acc, v -> acc + v }
+    return "Entered ${formatAmount(entered, currency)} of ${formatAmount(amount, currency)}"
+}
+
+fun splitActionsKeyboard(canConfirm: Boolean): InlineKeyboardMarkup = InlineKeyboardMarkup(
+    inlineKeyboard = listOf(
+        listOf(
+            InlineKeyboardButton(text = "Cancel", callbackData = SPLIT_CANCEL_DATA),
+            InlineKeyboardButton(text = "Confirm", callbackData = SPLIT_CONFIRM_DATA, disabled = !canConfirm),
+        ),
+    ),
+)
+
+fun splitIsReadyToConfirm(participantIds: List<MemberId>, amountsEntered: Map<MemberId, BigDecimal>, amount: BigDecimal): Boolean {
+    if (!participantIds.all { it in amountsEntered }) return false
+    val entered = amountsEntered.values.fold(BigDecimal.ZERO) { acc, v -> acc + v }
+    return entered.compareTo(amount) == 0
+}

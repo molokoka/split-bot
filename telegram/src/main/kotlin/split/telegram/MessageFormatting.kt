@@ -107,7 +107,7 @@ private fun expenseRow(expense: Expense, nameOf: Map<MemberId, Member>, username
 // Same @username-or-display-name preference as mentionName, but without HTML escaping: rich
 // message block text is literal, unlike the parse_mode HTML used by sendMessage, so escaping
 // here would show a literal "&amp;" instead of "&" for a name like "Bob & Sons".
-private fun plainName(member: Member, usernames: Map<MemberId, String>): String =
+internal fun plainName(member: Member, usernames: Map<MemberId, String>): String =
     usernames[member.id]?.let { "@$it" } ?: member.displayName
 
 fun buildSettlementListMessage(
