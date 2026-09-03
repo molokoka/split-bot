@@ -71,14 +71,15 @@ fun splitActionsText(amountsEntered: Map<MemberId, BigDecimal>, amount: BigDecim
     return "Entered ${formatAmount(entered, currency)} of ${formatAmount(amount, currency)}"
 }
 
-fun splitActionsKeyboard(canConfirm: Boolean): InlineKeyboardMarkup = InlineKeyboardMarkup(
-    inlineKeyboard = listOf(
-        listOf(
-            InlineKeyboardButton(text = "Cancel", callbackData = SPLIT_CANCEL_DATA),
-            InlineKeyboardButton(text = "Confirm", callbackData = SPLIT_CONFIRM_DATA, disabled = !canConfirm),
-        ),
-    ),
-)
+fun splitActionsKeyboard(canConfirm: Boolean): InlineKeyboardMarkup {
+    val cancelButton = InlineKeyboardButton(text = "Cancel", callbackData = SPLIT_CANCEL_DATA)
+    val row = if (canConfirm) {
+        listOf(cancelButton, InlineKeyboardButton(text = "Confirm", callbackData = SPLIT_CONFIRM_DATA))
+    } else {
+        listOf(cancelButton)
+    }
+    return InlineKeyboardMarkup(inlineKeyboard = listOf(row))
+}
 
 fun splitIsReadyToConfirm(participantIds: List<MemberId>, amountsEntered: Map<MemberId, BigDecimal>, amount: BigDecimal): Boolean {
     if (!participantIds.all { it in amountsEntered }) return false

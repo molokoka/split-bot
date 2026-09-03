@@ -44,7 +44,6 @@ data class TgUpdate(
 data class InlineKeyboardButton(
     val text: String,
     @SerialName("callback_data") val callbackData: String? = null,
-    val disabled: Boolean? = null,
 )
 
 @Serializable

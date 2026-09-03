@@ -44,27 +44,29 @@ fun formatExpenseConfirmation(
     usernames: Map<MemberId, String> = emptyMap(),
 ): String {
     val nameOf = members.associateBy { it.id }
-    val payerName = mentionName(nameOf.getValue(expense.payerId), usernames)
+    val payerId = expense.payerId
+    val payerName = mentionName(nameOf.getValue(payerId), usernames)
     val base = "$payerName paid ${formatAmount(expense.amount, expense.currency)} for <b>${escapeHtml(expense.description)}</b>"
 
-    // The payer is dropped from this list — they're already named as the payer, so
-    // repeating them in "split with" reads as if they split the expense with themselves.
+    val payerShare = expense.shares.find { it.memberId == payerId }
     // Sorted by name rather than left in expense.shares' order: that order reflects
     // incidental database row order on read (member_id happens to sort the rows), not
     // anything meaningful, so leaving it unsorted would show participants in a different,
-    // effectively random order every time the same expense is displayed.
-    val otherParticipants = expense.shares
-        .filter { it.memberId != expense.payerId }
+    // effectively random order every time the same expense is displayed. The payer is
+    // listed first so their own share reads immediately next to how much they paid,
+    // instead of leaving the reader to subtract everyone else's share from the total.
+    val otherShares = expense.shares
+        .filter { it.memberId != payerId }
         .sortedBy { nameOf.getValue(it.memberId).displayName }
-        .joinToString(", ") { share ->
-            "${mentionName(nameOf.getValue(share.memberId), usernames)} (${formatBareAmount(share.shareAmount)})"
-        }
 
-    return "Expense added:\n\n" + if (otherParticipants.isEmpty()) {
-        base
-    } else {
-        "$base, split ${splitTypeLabel(expense.splitType)} with $otherParticipants"
+    if (otherShares.isEmpty()) return "Expense added:\n\n$base"
+
+    val allShares = listOfNotNull(payerShare) + otherShares
+    val participants = allShares.joinToString(", ") { share ->
+        "${mentionName(nameOf.getValue(share.memberId), usernames)} (${formatBareAmount(share.shareAmount)})"
     }
+
+    return "Expense added:\n\n$base, split ${splitTypeLabel(expense.splitType)}: $participants"
 }
 
 private fun splitTypeLabel(splitType: SplitType): String = when (splitType) {

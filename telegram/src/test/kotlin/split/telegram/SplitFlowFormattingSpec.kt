@@ -79,20 +79,25 @@ class SplitFlowFormattingSpec : StringSpec({
         ) shouldBe "Entered 50.00 USD of 90.00 USD"
     }
 
-    "splitActionsKeyboard disables Confirm when canConfirm is false" {
+    "splitActionsKeyboard omits Confirm when canConfirm is false" {
         splitActionsKeyboard(canConfirm = false) shouldBe InlineKeyboardMarkup(
             inlineKeyboard = listOf(
                 listOf(
                     InlineKeyboardButton(text = "Cancel", callbackData = SPLIT_CANCEL_DATA),
-                    InlineKeyboardButton(text = "Confirm", callbackData = SPLIT_CONFIRM_DATA, disabled = true),
                 ),
             ),
         )
     }
 
-    "splitActionsKeyboard enables Confirm when canConfirm is true" {
-        val confirmButton = splitActionsKeyboard(canConfirm = true).inlineKeyboard[0][1]
-        confirmButton.disabled shouldBe false
+    "splitActionsKeyboard shows Confirm when canConfirm is true" {
+        splitActionsKeyboard(canConfirm = true) shouldBe InlineKeyboardMarkup(
+            inlineKeyboard = listOf(
+                listOf(
+                    InlineKeyboardButton(text = "Cancel", callbackData = SPLIT_CANCEL_DATA),
+                    InlineKeyboardButton(text = "Confirm", callbackData = SPLIT_CONFIRM_DATA),
+                ),
+            ),
+        )
     }
 
     "splitIsReadyToConfirm is false until every participant has an amount" {
