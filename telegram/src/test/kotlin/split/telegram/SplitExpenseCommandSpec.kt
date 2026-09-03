@@ -239,7 +239,7 @@ class SplitExpenseCommandSpec : StringSpec({
 
             draftStore.get(-100)?.awaiting shouldBe SplitDraftField.PARTICIPANTS
             telegramApi.sentForceReplyPrompts.single().second shouldBe
-                "Who split this with you? Reply with their usernames. I know <code>@bobby</code> in this group."
+                "Who split this with you? Reply with their usernames. Members:\n\n• @bobby"
         }
     }
 

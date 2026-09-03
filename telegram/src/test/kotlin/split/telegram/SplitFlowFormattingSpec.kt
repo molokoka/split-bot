@@ -66,9 +66,9 @@ class SplitFlowFormattingSpec : StringSpec({
             "Who split this with you? Reply with their usernames, e.g. <code>@alice @bob</code>."
     }
 
-    "splitDraftPromptText for participants lists known usernames, each wrapped in code" {
+    "splitDraftPromptText for participants lists known usernames as a bulleted, unescaped list" {
         splitDraftPromptText(SplitDraftField.PARTICIPANTS, "USD", knownUsernames = listOf("julia", "marco")) shouldBe
-            "Who split this with you? Reply with their usernames. I know <code>@julia</code>, <code>@marco</code> in this group."
+            "Who split this with you? Reply with their usernames. Members:\n\n• @julia\n• @marco"
     }
 
     "splitActionsText shows the running total against the expense amount" {

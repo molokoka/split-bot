@@ -61,8 +61,8 @@ fun splitDraftPromptText(awaiting: SplitDraftField, currency: String, knownUsern
     SplitDraftField.PARTICIPANTS -> if (knownUsernames.isEmpty()) {
         "Who split this with you? Reply with their usernames, e.g. <code>@alice @bob</code>."
     } else {
-        "Who split this with you? Reply with their usernames. I know " +
-            knownUsernames.joinToString(", ") { "<code>@$it</code>" } + " in this group."
+        "Who split this with you? Reply with their usernames. Members:\n\n" +
+            knownUsernames.joinToString("\n") { "• @$it" }
     }
 }
 
