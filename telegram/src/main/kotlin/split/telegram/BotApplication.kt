@@ -45,6 +45,10 @@ suspend fun main() {
     val telegramApi = HttpTelegramApi(botToken)
     val identityResolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
     val flowStore = SplitFlowStore()
+    val splitFlowCallbackHandler = SplitFlowCallbackHandler(
+        flowStore, groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi,
+    )
+    val splitFlowReplyHandler = SplitFlowReplyHandler(flowStore, memberRepository, platformDirectory, telegramApi)
 
     val handlers = mapOf(
         "start" to StartCommand(groupRepository, telegramApi)::handle,
@@ -69,7 +73,12 @@ suspend fun main() {
         )::handle,
     )
 
-    val router = CommandRouter(identityResolver, handlers)
+    val router = CommandRouter(
+        identityResolver,
+        handlers,
+        callbackHandler = splitFlowCallbackHandler::handle,
+        replyHandler = splitFlowReplyHandler::handle,
+    )
     val pollLoop = PollLoop(telegramApi, router)
 
     println("Bot started, polling for updates...")
