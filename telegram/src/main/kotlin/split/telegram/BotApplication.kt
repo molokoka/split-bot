@@ -58,6 +58,9 @@ suspend fun main() {
         "balance" to BalanceCommand(
             groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi,
         )::handle,
+        "balances" to BalancesCommand(
+            groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi,
+        )::handle,
         "settle" to SettleCommand(platformDirectory, groupRepository, settlementRepository, telegramApi)::handle,
         "settle_suggest" to SettleSuggestCommand(
             groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi,

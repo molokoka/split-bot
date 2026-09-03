@@ -15,6 +15,7 @@ internal const val HELP_TEXT = """Commands:
 /members — list who I recognize in this group
 /currency <code>currency</code> — set this group's default currency
 /balance — see who owes you and who you owe
+/balances — see every member's balance
 /expenses — last 10 expenses
 /delete <code>id</code> — remove an expense (payer or admin only)
 /settle <code>@person</code> <code>amount</code> — record that you paid them

@@ -159,6 +159,26 @@ fun formatBalances(
     return "Balances:\n\n" + lines.joinToString("\n")
 }
 
+// Same underlying pairwise data as formatBalances, but unfiltered — every member's debts,
+// not just the viewer's — so lines are phrased with both names instead of "you".
+fun formatAllBalances(
+    paymentsByCurrency: Map<String, List<DebtPayment>>,
+    members: List<Member>,
+    usernames: Map<MemberId, String> = emptyMap(),
+): String {
+    val nameOf = members.associateBy { it.id }
+    val lines = paymentsByCurrency.toSortedMap().flatMap { (currency, payments) ->
+        payments.map { payment ->
+            val from = mentionName(nameOf.getValue(payment.from), usernames)
+            val to = mentionName(nameOf.getValue(payment.to), usernames)
+            "$from owes $to ${formatAmount(payment.amount, currency)}"
+        }
+    }
+    if (lines.isEmpty()) return "Everyone's settled up!"
+
+    return "Balances:\n\n" + lines.joinToString("\n")
+}
+
 fun formatSettleSuggestions(
     paymentsByCurrency: Map<String, List<DebtPayment>>,
     members: List<Member>,
