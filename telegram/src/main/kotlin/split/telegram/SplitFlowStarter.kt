@@ -28,6 +28,17 @@ internal suspend fun knownUsernamesExcluding(
     return members.mapNotNull { usernames[it.id] }
 }
 
+internal suspend fun sendParticipantAmountPrompt(
+    chatId: Long,
+    memberId: MemberId,
+    members: List<Member>,
+    usernames: Map<MemberId, String>,
+    telegramApi: TelegramApi,
+): Long {
+    val name = mentionName(members.associateBy { it.id }.getValue(memberId), usernames)
+    return telegramApi.sendForceReplyPrompt(chatId, splitAmountPromptText(name))
+}
+
 class SplitFlowStarter(
     private val flowStore: SplitFlowStore,
     private val memberRepository: MemberRepository,
@@ -126,6 +137,8 @@ class SplitFlowStarter(
             splitActionsText(emptyMap(), amount, currency),
             splitActionsKeyboard(canConfirm = false),
         )
+        val firstParticipantId = participantIds.first()
+        val promptMessageId = sendParticipantAmountPrompt(chatId, firstParticipantId, members, usernames, telegramApi)
         flowStore.set(
             chatId,
             PendingSplit(
@@ -138,6 +151,8 @@ class SplitFlowStarter(
                 promptMessageId = tableMessageId,
                 stage = SplitFlowStage.ENTERING_AMOUNTS,
                 actionsMessageId = actionsMessageId,
+                pendingParticipantId = firstParticipantId,
+                pendingPromptMessageId = promptMessageId,
             ),
         )
     }

@@ -73,7 +73,17 @@ class SplitFlowCallbackHandler(
             splitActionsText(emptyMap(), flow.amount, flow.currency),
             splitActionsKeyboard(canConfirm = false),
         )
-        flowStore.set(context.chatId, flow.copy(stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = actionsMessageId))
+        val firstParticipantId = flow.participantIds.first()
+        val promptMessageId = sendParticipantAmountPrompt(context.chatId, firstParticipantId, members, usernames, telegramApi)
+        flowStore.set(
+            context.chatId,
+            flow.copy(
+                stage = SplitFlowStage.ENTERING_AMOUNTS,
+                actionsMessageId = actionsMessageId,
+                pendingParticipantId = firstParticipantId,
+                pendingPromptMessageId = promptMessageId,
+            ),
+        )
         telegramApi.answerCallbackQuery(context.callbackQueryId)
     }
 
@@ -85,8 +95,7 @@ class SplitFlowCallbackHandler(
             return
         }
         val (members, usernames) = membersAndUsernames(flow)
-        val name = mentionName(members.associateBy { it.id }.getValue(memberId), usernames)
-        val promptMessageId = telegramApi.sendForceReplyPrompt(context.chatId, splitAmountPromptText(name))
+        val promptMessageId = sendParticipantAmountPrompt(context.chatId, memberId, members, usernames, telegramApi)
         flowStore.set(context.chatId, flow.copy(pendingParticipantId = memberId, pendingPromptMessageId = promptMessageId))
         telegramApi.answerCallbackQuery(context.callbackQueryId)
     }

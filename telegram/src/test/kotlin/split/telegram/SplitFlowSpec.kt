@@ -65,6 +65,56 @@ class SplitFlowSpec : StringSpec({
         }
     }
 
+    "choosing Exact auto-advances through participants with no manual taps needed" {
+        withTestDatabase { db ->
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val groupRepository = ExposedGroupRepository(db)
+            val memberRepository = ExposedMemberRepository(db)
+            val expenseRepository = ExposedExpenseRepository(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+
+            val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            val groupId = resolver.resolveGroup("-100")
+            resolver.ensureGroupMembership(groupId, aliceId)
+            val bobId = resolver.resolveMember("2", "bobby", "Bob")
+
+            val telegramApi = FakeTelegramApi()
+            val flowStore = SplitFlowStore()
+            val draftStore = SplitDraftStore()
+            val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
+            val splitCommand = SplitExpenseCommand(platformDirectory, groupRepository, memberRepository, resolver, telegramApi, draftStore, flowStarter)
+            val callbackHandler = SplitFlowCallbackHandler(flowStore, groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)
+            val replyHandler = SplitFlowReplyHandler(flowStore, memberRepository, platformDirectory, telegramApi)
+
+            splitCommand.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner @bobby"))
+            val promptMessageId = flowStore.get(-100)!!.promptMessageId
+
+            // Tap "Exact" — no participant tap follows; the first prompt (Alice's) is already pending.
+            callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq1", promptMessageId, SPLIT_MODE_EXACT_DATA))
+            val actionsMessageId = flowStore.get(-100)!!.actionsMessageId!!
+            flowStore.get(-100)?.pendingParticipantId shouldBe aliceId
+            var promptId = flowStore.get(-100)!!.pendingPromptMessageId!!
+
+            // Reply directly — no tap for Bob either; the flow auto-advances to him.
+            replyHandler.handle(ReplyContext(-100, aliceId, groupId, promptId, "50"))
+            flowStore.get(-100)?.pendingParticipantId shouldBe bobId
+            promptId = flowStore.get(-100)!!.pendingPromptMessageId!!
+
+            // Reply directly for the last participant — no next prompt, ready to confirm.
+            replyHandler.handle(ReplyContext(-100, aliceId, groupId, promptId, "40"))
+            flowStore.get(-100)?.pendingParticipantId shouldBe null
+            flowStore.get(-100)?.pendingPromptMessageId shouldBe null
+
+            callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq2", actionsMessageId, SPLIT_CONFIRM_DATA))
+
+            val expense = expenseRepository.listActive(groupId).single()
+            expense.shares.associate { it.memberId to it.shareAmount } shouldBe mapOf(
+                aliceId to BigDecimal("50.00"),
+                bobId to BigDecimal("40.00"),
+            )
+        }
+    }
+
     "the full equal-split flow: choose Equal, expense created immediately" {
         withTestDatabase { db ->
             val platformDirectory = ExposedPlatformDirectory(db)

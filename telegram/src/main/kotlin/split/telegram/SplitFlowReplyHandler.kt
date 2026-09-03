@@ -23,9 +23,6 @@ class SplitFlowReplyHandler(
         }
 
         val updatedAmounts = flow.amountsEntered + (pendingParticipantId to amount)
-        val updatedFlow = flow.copy(amountsEntered = updatedAmounts, pendingParticipantId = null, pendingPromptMessageId = null)
-        flowStore.set(context.chatId, updatedFlow)
-
         val members = memberRepository.findByGroup(flow.groupId)
         val usernames = platformDirectory.findUsernames(IdentityResolver.PLATFORM, members.map { it.id })
         val nameOf = members.associateBy { it.id }
@@ -45,5 +42,14 @@ class SplitFlowReplyHandler(
                 splitActionsKeyboard(canConfirm),
             )
         }
+
+        val nextParticipantId = flow.participantIds.firstOrNull { it !in updatedAmounts }
+        val updatedFlow = if (nextParticipantId != null) {
+            val promptMessageId = sendParticipantAmountPrompt(context.chatId, nextParticipantId, members, usernames, telegramApi)
+            flow.copy(amountsEntered = updatedAmounts, pendingParticipantId = nextParticipantId, pendingPromptMessageId = promptMessageId)
+        } else {
+            flow.copy(amountsEntered = updatedAmounts, pendingParticipantId = null, pendingPromptMessageId = null)
+        }
+        flowStore.set(context.chatId, updatedFlow)
     }
 }
