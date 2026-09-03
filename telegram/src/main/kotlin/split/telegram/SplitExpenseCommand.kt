@@ -1,26 +1,14 @@
 package split.telegram
 
-import split.core.Expense
-import split.core.ExpenseId
-import split.core.ExpenseRepository
 import split.core.GroupRepository
-import split.core.MemberRepository
 import split.core.PlatformDirectory
-import split.core.SplitType
-import split.core.resolveEqualSplit
-import java.time.Clock
-import java.time.Instant
-import java.util.UUID
 
 class SplitExpenseCommand(
     private val platformDirectory: PlatformDirectory,
     private val groupRepository: GroupRepository,
-    private val memberRepository: MemberRepository,
-    private val expenseRepository: ExpenseRepository,
     private val identityResolver: IdentityResolver,
     private val telegramApi: TelegramApi,
-    private val idGenerator: () -> String = { UUID.randomUUID().toString() },
-    private val clock: Clock = Clock.systemUTC(),
+    private val flowStore: SplitFlowStore,
 ) {
     suspend fun handle(context: CommandContext) {
         val group = groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
@@ -50,23 +38,19 @@ class SplitExpenseCommand(
             identityResolver.ensureGroupMembership(context.groupId, participantId)
         }
 
-        val shares = resolveEqualSplit(parsed.amount, context.memberId, uniqueParticipantIds)
-        val expense = Expense(
-            id = ExpenseId(idGenerator()),
-            groupId = context.groupId,
-            currency = parsed.currency,
-            description = parsed.description,
-            amount = parsed.amount,
-            payerId = context.memberId,
-            splitType = SplitType.EQUAL,
-            createdBy = context.memberId,
-            createdAt = Instant.now(clock),
-            shares = shares,
+        val promptMessageId = telegramApi.sendMessage(context.chatId, SPLIT_MODE_PROMPT, splitModeKeyboard())
+        flowStore.set(
+            context.chatId,
+            PendingSplit(
+                invokerId = context.memberId,
+                groupId = context.groupId,
+                amount = parsed.amount.setScale(2),
+                currency = parsed.currency,
+                description = parsed.description,
+                participantIds = uniqueParticipantIds,
+                promptMessageId = promptMessageId,
+                stage = SplitFlowStage.CHOOSING_MODE,
+            ),
         )
-        expenseRepository.create(expense)
-
-        val members = memberRepository.findByGroup(context.groupId)
-        val usernames = platformDirectory.findUsernames(IdentityResolver.PLATFORM, members.map { it.id })
-        telegramApi.sendMessage(context.chatId, formatExpenseConfirmation(expense, members, usernames))
     }
 }
