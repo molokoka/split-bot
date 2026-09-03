@@ -19,6 +19,7 @@ data class PendingSplit(
     val amountsEntered: Map<MemberId, BigDecimal> = emptyMap(),
     val pendingParticipantId: MemberId? = null,
     val pendingPromptMessageId: Long? = null,
+    val pendingIsAutoAdvance: Boolean = true,
 )
 
 class SplitFlowStore {

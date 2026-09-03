@@ -53,6 +53,41 @@ class SplitFlowReplyHandlerSpec : StringSpec({
         }
     }
 
+    "a reply for a manually-picked participant does not auto-advance to the next one" {
+        withTestDatabase { db ->
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val memberRepository = ExposedMemberRepository(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, ExposedGroupRepository(db))
+
+            val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            val bobId = resolver.resolveMember("2", "bob", "Bob")
+            val groupId = resolver.resolveGroup("-100")
+            resolver.ensureGroupMembership(groupId, aliceId)
+            resolver.ensureGroupMembership(groupId, bobId)
+
+            val telegramApi = FakeTelegramApi()
+            val flowStore = SplitFlowStore()
+            flowStore.set(
+                -100,
+                PendingSplit(
+                    invokerId = aliceId, groupId = groupId, amount = BigDecimal("90.00"), currency = "USD",
+                    description = "dinner", participantIds = listOf(aliceId, bobId), promptMessageId = 1,
+                    stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2,
+                    pendingParticipantId = bobId, pendingPromptMessageId = 3, pendingIsAutoAdvance = false,
+                ),
+            )
+            val handler = SplitFlowReplyHandler(flowStore, memberRepository, platformDirectory, telegramApi)
+
+            handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 3, text = "40"))
+
+            val flow = flowStore.get(-100)
+            flow?.amountsEntered shouldBe mapOf(bobId to BigDecimal("40"))
+            flow?.pendingParticipantId shouldBe null
+            flow?.pendingPromptMessageId shouldBe null
+            telegramApi.sentForceReplyPrompts shouldBe emptyList()
+        }
+    }
+
     "once every participant has an amount, the flow stops advancing and waits for Confirm" {
         withTestDatabase { db ->
             val platformDirectory = ExposedPlatformDirectory(db)

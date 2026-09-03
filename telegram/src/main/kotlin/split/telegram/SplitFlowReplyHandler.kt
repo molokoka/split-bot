@@ -43,7 +43,11 @@ class SplitFlowReplyHandler(
             )
         }
 
-        val nextParticipantId = flow.participantIds.firstOrNull { it !in updatedAmounts }
+        val nextParticipantId = if (flow.pendingIsAutoAdvance) {
+            flow.participantIds.firstOrNull { it !in updatedAmounts }
+        } else {
+            null
+        }
         val updatedFlow = if (nextParticipantId != null) {
             val promptMessageId = sendParticipantAmountPrompt(context.chatId, nextParticipantId, members, usernames, telegramApi)
             flow.copy(
@@ -51,6 +55,7 @@ class SplitFlowReplyHandler(
                 actionsMessageId = newActionsMessageId ?: flow.actionsMessageId,
                 pendingParticipantId = nextParticipantId,
                 pendingPromptMessageId = promptMessageId,
+                pendingIsAutoAdvance = true,
             )
         } else {
             flow.copy(
@@ -58,6 +63,7 @@ class SplitFlowReplyHandler(
                 actionsMessageId = newActionsMessageId ?: flow.actionsMessageId,
                 pendingParticipantId = null,
                 pendingPromptMessageId = null,
+                pendingIsAutoAdvance = true,
             )
         }
         flowStore.set(context.chatId, updatedFlow)

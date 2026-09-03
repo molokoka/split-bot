@@ -97,7 +97,10 @@ class SplitFlowCallbackHandler(
         flow.pendingPromptMessageId?.let { telegramApi.deleteMessage(context.chatId, it) }
         val (members, usernames) = membersAndUsernames(flow)
         val promptMessageId = sendParticipantAmountPrompt(context.chatId, memberId, members, usernames, telegramApi)
-        flowStore.set(context.chatId, flow.copy(pendingParticipantId = memberId, pendingPromptMessageId = promptMessageId))
+        flowStore.set(
+            context.chatId,
+            flow.copy(pendingParticipantId = memberId, pendingPromptMessageId = promptMessageId, pendingIsAutoAdvance = false),
+        )
         telegramApi.answerCallbackQuery(context.callbackQueryId)
     }
 
