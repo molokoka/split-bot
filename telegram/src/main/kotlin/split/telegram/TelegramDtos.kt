@@ -22,12 +22,41 @@ data class TgMessage(
     val from: TgUser? = null,
     val chat: TgChat,
     val text: String? = null,
+    // Telegram nests this one level deep in practice (a reply's own reply_to_message is
+    // never populated), but the type is self-referential to mirror the real API shape.
+    @SerialName("reply_to_message") val replyToMessage: TgMessage? = null,
+)
+
+@Serializable
+data class TgCallbackQuery(
+    val id: String,
+    val from: TgUser,
+    val message: TgMessage? = null,
+    val data: String? = null,
 )
 
 @Serializable
 data class TgUpdate(
     @SerialName("update_id") val updateId: Long,
     val message: TgMessage? = null,
+    @SerialName("callback_query") val callbackQuery: TgCallbackQuery? = null,
+)
+
+@Serializable
+data class InlineKeyboardButton(
+    val text: String,
+    @SerialName("callback_data") val callbackData: String? = null,
+    val disabled: Boolean? = null,
+)
+
+// Setting force_reply pops the reply composer, targeted at this message, when any button
+// on this keyboard is tapped (Bot API 10.3) — it applies to the whole keyboard, not a
+// single button, which is why the exact-split flow uses two separate messages/keyboards
+// (see the design spec's "UX overview").
+@Serializable
+data class InlineKeyboardMarkup(
+    @SerialName("inline_keyboard") val inlineKeyboard: List<List<InlineKeyboardButton>>,
+    @SerialName("force_reply") val forceReply: Boolean? = null,
 )
 
 @Serializable

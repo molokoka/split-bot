@@ -65,4 +65,58 @@ class TelegramDtosSpec : StringSpec({
             message = TgMessage(messageId = 1, from = null, chat = TgChat(id = 5, type = "private"), text = null),
         )
     }
+
+    "deserializes an update with a callback_query" {
+        val body = """
+            {
+              "update_id": 5,
+              "callback_query": {
+                "id": "cbq1",
+                "from": {"id": 1, "first_name": "Alice", "username": "alice_w"},
+                "message": {
+                  "message_id": 42,
+                  "chat": {"id": -100, "type": "group"}
+                },
+                "data": "split:mode:exact"
+              }
+            }
+        """.trimIndent()
+
+        val parsed = json.decodeFromString(TgUpdate.serializer(), body)
+
+        parsed shouldBe TgUpdate(
+            updateId = 5,
+            callbackQuery = TgCallbackQuery(
+                id = "cbq1",
+                from = TgUser(id = 1, firstName = "Alice", username = "alice_w"),
+                message = TgMessage(messageId = 42, chat = TgChat(id = -100, type = "group")),
+                data = "split:mode:exact",
+            ),
+        )
+    }
+
+    "deserializes a message that's a reply to another message" {
+        val body = """
+            {
+              "message_id": 7,
+              "from": {"id": 1, "first_name": "Alice"},
+              "chat": {"id": -100, "type": "group"},
+              "text": "50",
+              "reply_to_message": {
+                "message_id": 3,
+                "chat": {"id": -100, "type": "group"}
+              }
+            }
+        """.trimIndent()
+
+        val parsed = json.decodeFromString(TgMessage.serializer(), body)
+
+        parsed shouldBe TgMessage(
+            messageId = 7,
+            from = TgUser(id = 1, firstName = "Alice"),
+            chat = TgChat(id = -100, type = "group"),
+            text = "50",
+            replyToMessage = TgMessage(messageId = 3, chat = TgChat(id = -100, type = "group")),
+        )
+    }
 })
