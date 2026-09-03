@@ -36,17 +36,40 @@ class HttpTelegramApi(
         return response.result
     }
 
-    override suspend fun sendMessage(chatId: Long, text: String) {
-        httpClient.post("$baseUrl/bot$botToken/sendMessage") {
+    override suspend fun sendMessage(chatId: Long, text: String, keyboard: InlineKeyboardMarkup?): Long {
+        val response: MessageResponse = httpClient.post("$baseUrl/bot$botToken/sendMessage") {
             contentType(ContentType.Application.Json)
-            setBody(SendMessageRequest(chatId, text, parseMode = "HTML"))
+            setBody(SendMessageRequest(chatId, text, parseMode = "HTML", replyMarkup = keyboard))
+        }.body()
+        return response.result.messageId
+    }
+
+    override suspend fun sendRichMessage(chatId: Long, richMessage: InputRichMessage, keyboard: InlineKeyboardMarkup?): Long {
+        val response: MessageResponse = httpClient.post("$baseUrl/bot$botToken/sendRichMessage") {
+            contentType(ContentType.Application.Json)
+            setBody(SendRichMessageRequest(chatId, richMessage, replyMarkup = keyboard))
+        }.body()
+        return response.result.messageId
+    }
+
+    override suspend fun editMessageText(chatId: Long, messageId: Long, text: String, keyboard: InlineKeyboardMarkup?) {
+        httpClient.post("$baseUrl/bot$botToken/editMessageText") {
+            contentType(ContentType.Application.Json)
+            setBody(EditMessageTextRequest(chatId, messageId, text, parseMode = "HTML", replyMarkup = keyboard))
         }
     }
 
-    override suspend fun sendRichMessage(chatId: Long, richMessage: InputRichMessage) {
-        httpClient.post("$baseUrl/bot$botToken/sendRichMessage") {
+    override suspend fun editRichMessage(chatId: Long, messageId: Long, richMessage: InputRichMessage, keyboard: InlineKeyboardMarkup?) {
+        httpClient.post("$baseUrl/bot$botToken/editRichMessage") {
             contentType(ContentType.Application.Json)
-            setBody(SendRichMessageRequest(chatId, richMessage))
+            setBody(EditRichMessageRequest(chatId, messageId, richMessage, replyMarkup = keyboard))
+        }
+    }
+
+    override suspend fun answerCallbackQuery(callbackQueryId: String, text: String?, showAlert: Boolean) {
+        httpClient.post("$baseUrl/bot$botToken/answerCallbackQuery") {
+            contentType(ContentType.Application.Json)
+            setBody(AnswerCallbackQueryRequest(callbackQueryId, text, showAlert.takeIf { it }))
         }
     }
 

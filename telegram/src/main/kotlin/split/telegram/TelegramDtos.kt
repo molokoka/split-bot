@@ -78,6 +78,29 @@ data class SendMessageRequest(
     // No default value: kotlinx.serialization omits fields left at their default unless
     // encodeDefaults is set, and this one must always be sent.
     @SerialName("parse_mode") val parseMode: String,
+    @SerialName("reply_markup") val replyMarkup: InlineKeyboardMarkup? = null,
+)
+
+@Serializable
+data class EditMessageTextRequest(
+    @SerialName("chat_id") val chatId: Long,
+    @SerialName("message_id") val messageId: Long,
+    val text: String,
+    @SerialName("parse_mode") val parseMode: String,
+    @SerialName("reply_markup") val replyMarkup: InlineKeyboardMarkup? = null,
+)
+
+@Serializable
+data class AnswerCallbackQueryRequest(
+    @SerialName("callback_query_id") val callbackQueryId: String,
+    val text: String? = null,
+    @SerialName("show_alert") val showAlert: Boolean? = null,
+)
+
+@Serializable
+data class MessageResponse(
+    val ok: Boolean,
+    val result: TgMessage,
 )
 
 // Telegram Bot API 10.1+ "Rich Messages" (sendRichMessage). Unlike sendMessage's parse_mode
@@ -112,4 +135,13 @@ data class InputRichMessage(
 data class SendRichMessageRequest(
     @SerialName("chat_id") val chatId: Long,
     @SerialName("rich_message") val richMessage: InputRichMessage,
+    @SerialName("reply_markup") val replyMarkup: InlineKeyboardMarkup? = null,
+)
+
+@Serializable
+data class EditRichMessageRequest(
+    @SerialName("chat_id") val chatId: Long,
+    @SerialName("message_id") val messageId: Long,
+    @SerialName("rich_message") val richMessage: InputRichMessage,
+    @SerialName("reply_markup") val replyMarkup: InlineKeyboardMarkup? = null,
 )

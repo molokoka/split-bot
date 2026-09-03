@@ -62,20 +62,38 @@ class HttpTelegramApiSpec : StringSpec({
         requests.single().url.toString() shouldBe "https://api.telegram.org/bottok/getUpdates?timeout=5&offset=42"
     }
 
-    "sendMessage posts chat_id and text as JSON" {
-        val (httpClient, requests) = clientReturning("""{"ok":true}""")
+    "sendMessage posts chat_id and text as JSON and returns the sent message id" {
+        val (httpClient, requests) = clientReturning("""{"ok":true,"result":{"message_id":55,"chat":{"id":-100,"type":"group"}}}""")
         val api = HttpTelegramApi(botToken = "tok", httpClient = httpClient)
 
-        api.sendMessage(chatId = -100, text = "hi")
+        val messageId = api.sendMessage(chatId = -100, text = "hi")
 
         requests.single().body.toByteArray().decodeToString() shouldBe """{"chat_id":-100,"text":"hi","parse_mode":"HTML"}"""
+        messageId shouldBe 55L
     }
 
-    "sendRichMessage posts chat_id and rich_message as JSON" {
-        val (httpClient, requests) = clientReturning("""{"ok":true}""")
+    "sendMessage includes reply_markup when a keyboard is given" {
+        val (httpClient, requests) = clientReturning("""{"ok":true,"result":{"message_id":1,"chat":{"id":-100,"type":"group"}}}""")
         val api = HttpTelegramApi(botToken = "tok", httpClient = httpClient)
 
-        api.sendRichMessage(
+        api.sendMessage(
+            chatId = -100,
+            text = "How should this be split?",
+            keyboard = InlineKeyboardMarkup(
+                inlineKeyboard = listOf(listOf(InlineKeyboardButton(text = "Equal", callbackData = "split:mode:equal"))),
+            ),
+        )
+
+        requests.single().body.toByteArray().decodeToString() shouldBe
+            """{"chat_id":-100,"text":"How should this be split?","parse_mode":"HTML",""" +
+            """"reply_markup":{"inline_keyboard":[[{"text":"Equal","callback_data":"split:mode:equal"}]]}}"""
+    }
+
+    "sendRichMessage posts chat_id and rich_message as JSON and returns the sent message id" {
+        val (httpClient, requests) = clientReturning("""{"ok":true,"result":{"message_id":56,"chat":{"id":-100,"type":"group"}}}""")
+        val api = HttpTelegramApi(botToken = "tok", httpClient = httpClient)
+
+        val messageId = api.sendRichMessage(
             chatId = -100,
             richMessage = InputRichMessage(
                 blocks = listOf(
@@ -90,6 +108,56 @@ class HttpTelegramApiSpec : StringSpec({
         requests.single().body.toByteArray().decodeToString() shouldBe
             """{"chat_id":-100,"rich_message":{"blocks":[{"type":"table","cells":[[{"text":"ID","is_header":true}],[{"text":"e1"}]],""" +
             """"caption":"Last 10 expenses"}]}}"""
+        messageId shouldBe 56L
+    }
+
+    "editMessageText posts chat_id, message_id, text, and an optional keyboard" {
+        val (httpClient, requests) = clientReturning("""{"ok":true}""")
+        val api = HttpTelegramApi(botToken = "tok", httpClient = httpClient)
+
+        api.editMessageText(
+            chatId = -100,
+            messageId = 42,
+            text = "Split cancelled.",
+            keyboard = InlineKeyboardMarkup(inlineKeyboard = listOf(listOf(InlineKeyboardButton(text = "Confirm", callbackData = "split:confirm")))),
+        )
+
+        requests.single().body.toByteArray().decodeToString() shouldBe
+            """{"chat_id":-100,"message_id":42,"text":"Split cancelled.","parse_mode":"HTML",""" +
+            """"reply_markup":{"inline_keyboard":[[{"text":"Confirm","callback_data":"split:confirm"}]]}}"""
+    }
+
+    "editRichMessage posts chat_id, message_id, and rich_message" {
+        val (httpClient, requests) = clientReturning("""{"ok":true}""")
+        val api = HttpTelegramApi(botToken = "tok", httpClient = httpClient)
+
+        api.editRichMessage(
+            chatId = -100,
+            messageId = 42,
+            richMessage = InputRichMessage(blocks = listOf(RichBlockParagraph("Split cancelled."))),
+        )
+
+        requests.single().body.toByteArray().decodeToString() shouldBe
+            """{"chat_id":-100,"message_id":42,"rich_message":{"blocks":[{"type":"paragraph","text":"Split cancelled."}]}}"""
+    }
+
+    "answerCallbackQuery posts callback_query_id, text, and show_alert" {
+        val (httpClient, requests) = clientReturning("""{"ok":true}""")
+        val api = HttpTelegramApi(botToken = "tok", httpClient = httpClient)
+
+        api.answerCallbackQuery(callbackQueryId = "cbq1", text = "Only the invoker can do that.", showAlert = true)
+
+        requests.single().body.toByteArray().decodeToString() shouldBe
+            """{"callback_query_id":"cbq1","text":"Only the invoker can do that.","show_alert":true}"""
+    }
+
+    "answerCallbackQuery omits text and show_alert when not given" {
+        val (httpClient, requests) = clientReturning("""{"ok":true}""")
+        val api = HttpTelegramApi(botToken = "tok", httpClient = httpClient)
+
+        api.answerCallbackQuery(callbackQueryId = "cbq1")
+
+        requests.single().body.toByteArray().decodeToString() shouldBe """{"callback_query_id":"cbq1"}"""
     }
 
     "getChatAdministrators parses the response" {
