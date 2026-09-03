@@ -44,6 +44,7 @@ suspend fun main() {
 
     val telegramApi = HttpTelegramApi(botToken)
     val identityResolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+    val flowStore = SplitFlowStore()
 
     val handlers = mapOf(
         "start" to StartCommand(groupRepository, telegramApi)::handle,
@@ -51,7 +52,7 @@ suspend fun main() {
         "currency" to CurrencyCommand(groupRepository, telegramApi)::handle,
         "members" to MembersCommand(memberRepository, platformDirectory, telegramApi)::handle,
         "split" to SplitExpenseCommand(
-            platformDirectory, groupRepository, memberRepository, expenseRepository, identityResolver, telegramApi,
+            platformDirectory, groupRepository, identityResolver, telegramApi, flowStore,
         )::handle,
         "delete" to DeleteExpenseCommand(groupRepository, expenseRepository, telegramApi)::handle,
         "expenses" to ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)::handle,
