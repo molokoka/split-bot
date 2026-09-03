@@ -139,6 +139,7 @@ class HttpTelegramApiSpec : StringSpec({
 
         requests.single().body.toByteArray().decodeToString() shouldBe
             """{"chat_id":-100,"message_id":42,"rich_message":{"blocks":[{"type":"paragraph","text":"Split cancelled."}]}}"""
+        requests.single().url.toString() shouldBe "https://api.telegram.org/bottok/editMessageText"
     }
 
     "answerCallbackQuery posts callback_query_id, text, and show_alert" {

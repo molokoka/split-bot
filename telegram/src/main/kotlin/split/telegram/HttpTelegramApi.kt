@@ -60,7 +60,7 @@ class HttpTelegramApi(
     }
 
     override suspend fun editRichMessage(chatId: Long, messageId: Long, richMessage: InputRichMessage, keyboard: InlineKeyboardMarkup?) {
-        httpClient.post("$baseUrl/bot$botToken/editRichMessage") {
+        httpClient.post("$baseUrl/bot$botToken/editMessageText") {
             contentType(ContentType.Application.Json)
             setBody(EditRichMessageRequest(chatId, messageId, richMessage, replyMarkup = keyboard))
         }
