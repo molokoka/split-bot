@@ -94,6 +94,7 @@ class SplitFlowCallbackHandler(
             telegramApi.answerCallbackQuery(context.callbackQueryId, "This split is no longer active.", showAlert = true)
             return
         }
+        flow.pendingPromptMessageId?.let { telegramApi.deleteMessage(context.chatId, it) }
         val (members, usernames) = membersAndUsernames(flow)
         val promptMessageId = sendParticipantAmountPrompt(context.chatId, memberId, members, usernames, telegramApi)
         flowStore.set(context.chatId, flow.copy(pendingParticipantId = memberId, pendingPromptMessageId = promptMessageId))
@@ -101,6 +102,7 @@ class SplitFlowCallbackHandler(
     }
 
     private suspend fun cancel(context: CallbackContext, flow: PendingSplit) {
+        flow.pendingPromptMessageId?.let { telegramApi.deleteMessage(context.chatId, it) }
         telegramApi.editMessageText(context.chatId, flow.promptMessageId, "Split cancelled.")
         flow.actionsMessageId?.let { telegramApi.editMessageText(context.chatId, it, "Split cancelled.") }
         flowStore.clear(context.chatId)

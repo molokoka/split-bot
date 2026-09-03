@@ -122,6 +122,40 @@ class SplitFlowCallbackHandlerSpec : StringSpec({
         }
     }
 
+    "picking a different participant deletes the previous, still-unanswered prompt" {
+        withTestDatabase { db ->
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val groupRepository = ExposedGroupRepository(db)
+            val memberRepository = ExposedMemberRepository(db)
+            val expenseRepository = ExposedExpenseRepository(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+
+            val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            val bobId = resolver.resolveMember("2", "bob", "Bob")
+            val groupId = resolver.resolveGroup("-100")
+            resolver.ensureGroupMembership(groupId, aliceId)
+            resolver.ensureGroupMembership(groupId, bobId)
+
+            val telegramApi = FakeTelegramApi()
+            val flowStore = SplitFlowStore()
+            flowStore.set(
+                -100,
+                PendingSplit(
+                    invokerId = aliceId, groupId = groupId, amount = BigDecimal("90.00"), currency = "USD",
+                    description = "dinner", participantIds = listOf(aliceId, bobId), promptMessageId = 1,
+                    stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2,
+                    pendingParticipantId = aliceId, pendingPromptMessageId = 99,
+                ),
+            )
+            val handler = SplitFlowCallbackHandler(flowStore, groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)
+
+            handler.handle(CallbackContext(-100, aliceId, groupId, "cbq1", messageId = 1, splitPickData(1)))
+
+            telegramApi.deletedMessages.single() shouldBe (-100L to 99L)
+            flowStore.get(-100)?.pendingParticipantId shouldBe bobId
+        }
+    }
+
     "confirm creates the exact-split expense once amounts are entered" {
         withTestDatabase { db ->
             val platformDirectory = ExposedPlatformDirectory(db)
@@ -187,6 +221,36 @@ class SplitFlowCallbackHandlerSpec : StringSpec({
 
             expenseRepository.listActive(groupId) shouldBe emptyList()
             flowStore.get(-100) shouldBe null
+        }
+    }
+
+    "cancel deletes an outstanding, still-unanswered prompt" {
+        withTestDatabase { db ->
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val groupRepository = ExposedGroupRepository(db)
+            val memberRepository = ExposedMemberRepository(db)
+            val expenseRepository = ExposedExpenseRepository(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+
+            val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            val groupId = resolver.resolveGroup("-100")
+
+            val telegramApi = FakeTelegramApi()
+            val flowStore = SplitFlowStore()
+            flowStore.set(
+                -100,
+                PendingSplit(
+                    invokerId = aliceId, groupId = groupId, amount = BigDecimal("90.00"), currency = "USD",
+                    description = "dinner", participantIds = listOf(aliceId), promptMessageId = 1,
+                    stage = SplitFlowStage.ENTERING_AMOUNTS, actionsMessageId = 2,
+                    pendingParticipantId = aliceId, pendingPromptMessageId = 99,
+                ),
+            )
+            val handler = SplitFlowCallbackHandler(flowStore, groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)
+
+            handler.handle(CallbackContext(-100, aliceId, groupId, "cbq1", messageId = 2, SPLIT_CANCEL_DATA))
+
+            telegramApi.deletedMessages.single() shouldBe (-100L to 99L)
         }
     }
 
