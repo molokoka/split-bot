@@ -4,6 +4,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import java.math.BigDecimal
+import split.core.SplitType
 
 class CommandParsingSpec : StringSpec({
 
@@ -33,21 +34,59 @@ class CommandParsingSpec : StringSpec({
 
     "parseSplitArgs with no currency uses the group default" {
         parseSplitArgs("90 dinner @alice @bobby", defaultCurrency = "USD") shouldBe
-            SplitExpenseArgs(BigDecimal("90"), "USD", "dinner", listOf("alice", "bobby"))
+            PartialSplitArgs(null, BigDecimal("90"), "USD", "dinner", listOf("alice", "bobby"), null)
     }
 
     "parseSplitArgs with an explicit currency overrides the default" {
         parseSplitArgs("90 EUR dinner @alice", defaultCurrency = "USD") shouldBe
-            SplitExpenseArgs(BigDecimal("90"), "EUR", "dinner", listOf("alice"))
+            PartialSplitArgs(null, BigDecimal("90"), "EUR", "dinner", listOf("alice"), null)
     }
 
     "parseSplitArgs keeps a multi-word description that isn't a currency code" {
         parseSplitArgs("90 Fancy Dinner Party @alice", defaultCurrency = "USD") shouldBe
-            SplitExpenseArgs(BigDecimal("90"), "USD", "Fancy Dinner Party", listOf("alice"))
+            PartialSplitArgs(null, BigDecimal("90"), "USD", "Fancy Dinner Party", listOf("alice"), null)
     }
 
-    "parseSplitArgs rejects no mentions" {
-        shouldThrow<IllegalArgumentException> { parseSplitArgs("90 dinner", defaultCurrency = "USD") }
+    "parseSplitArgs leaves mentions empty (not an error) when none are given" {
+        parseSplitArgs("90 dinner", defaultCurrency = "USD") shouldBe
+            PartialSplitArgs(null, BigDecimal("90"), "USD", "dinner", emptyList(), null)
+    }
+
+    "parseSplitArgs leaves amount and description null when the args are empty" {
+        parseSplitArgs("", defaultCurrency = "USD") shouldBe
+            PartialSplitArgs(null, null, "USD", null, emptyList(), null)
+    }
+
+    "parseSplitArgs treats non-numeric leading text as the description, not an amount" {
+        parseSplitArgs("dinner @alice", defaultCurrency = "USD") shouldBe
+            PartialSplitArgs(null, null, "USD", "dinner", listOf("alice"), null)
+    }
+
+    "parseSplitArgs recognizes a leading equal keyword" {
+        parseSplitArgs("equal 90 dinner @alice @bobby", defaultCurrency = "USD") shouldBe
+            PartialSplitArgs(SplitType.EQUAL, BigDecimal("90"), "USD", "dinner", listOf("alice", "bobby"), null)
+    }
+
+    "parseSplitArgs recognizes a leading exact keyword" {
+        parseSplitArgs("exact 90 dinner @alice @bobby", defaultCurrency = "USD") shouldBe
+            PartialSplitArgs(SplitType.EXACT, BigDecimal("90"), "USD", "dinner", listOf("alice", "bobby"), null)
+    }
+
+    "parseSplitArgs extracts an amount typed right after each mention" {
+        parseSplitArgs("90 dinner @alice 50 @bobby 40", defaultCurrency = "USD") shouldBe
+            PartialSplitArgs(null, BigDecimal("90"), "USD", "dinner", listOf("alice", "bobby"), listOf(BigDecimal("50"), BigDecimal("40")))
+    }
+
+    "parseSplitArgs rejects giving some mentions an amount but not others" {
+        shouldThrow<IllegalArgumentException> { parseSplitArgs("90 dinner @alice 50 @bobby", defaultCurrency = "USD") }
+    }
+
+    "parseSplitArgs rejects the equal keyword combined with per-mention amounts" {
+        shouldThrow<IllegalArgumentException> { parseSplitArgs("equal 90 dinner @alice 50 @bobby 40", defaultCurrency = "USD") }
+    }
+
+    "parseSplitArgs rejects a non-positive per-mention amount" {
+        shouldThrow<IllegalArgumentException> { parseSplitArgs("90 dinner @alice 0 @bobby 90", defaultCurrency = "USD") }
     }
 
     "parseSettleArgs parses a mention and an amount" {

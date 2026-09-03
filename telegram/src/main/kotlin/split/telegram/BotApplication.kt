@@ -45,10 +45,13 @@ suspend fun main() {
     val telegramApi = HttpTelegramApi(botToken)
     val identityResolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
     val flowStore = SplitFlowStore()
+    val draftStore = SplitDraftStore()
+    val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
     val splitFlowCallbackHandler = SplitFlowCallbackHandler(
         flowStore, groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi,
     )
     val splitFlowReplyHandler = SplitFlowReplyHandler(flowStore, memberRepository, platformDirectory, telegramApi)
+    val splitDraftReplyHandler = SplitDraftReplyHandler(draftStore, platformDirectory, telegramApi, flowStarter)
 
     val handlers = mapOf(
         "start" to StartCommand(groupRepository, telegramApi)::handle,
@@ -56,7 +59,7 @@ suspend fun main() {
         "currency" to CurrencyCommand(groupRepository, telegramApi)::handle,
         "members" to MembersCommand(memberRepository, platformDirectory, telegramApi)::handle,
         "split" to SplitExpenseCommand(
-            platformDirectory, groupRepository, identityResolver, telegramApi, flowStore,
+            platformDirectory, groupRepository, identityResolver, telegramApi, draftStore, flowStarter,
         )::handle,
         "delete" to DeleteExpenseCommand(groupRepository, expenseRepository, telegramApi)::handle,
         "expenses" to ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)::handle,
@@ -77,11 +80,18 @@ suspend fun main() {
         identityResolver,
         handlers,
         callbackHandler = splitFlowCallbackHandler::handle,
-        replyHandler = splitFlowReplyHandler::handle,
+        replyHandler = { context ->
+            if (draftStore.get(context.chatId)?.promptMessageId == context.replyToMessageId) {
+                splitDraftReplyHandler.handle(context)
+            } else {
+                splitFlowReplyHandler.handle(context)
+            }
+        },
         isTrackedReply = { chatId, messageId ->
-            flowStore.get(chatId)?.let {
-                it.promptMessageId == messageId || it.actionsMessageId == messageId || it.pendingPromptMessageId == messageId
-            } ?: false
+            draftStore.get(chatId)?.promptMessageId == messageId ||
+                flowStore.get(chatId)?.let {
+                    it.promptMessageId == messageId || it.actionsMessageId == messageId || it.pendingPromptMessageId == messageId
+                } ?: false
         },
     )
     val pollLoop = PollLoop(telegramApi, router)

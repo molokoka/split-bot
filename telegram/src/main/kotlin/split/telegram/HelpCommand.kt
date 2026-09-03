@@ -11,7 +11,13 @@ import split.core.GroupRepository
 // happens to hold that username.
 internal const val HELP_TEXT = """Commands:
 
-/split <code>amount</code> [<code>currency</code>] <code>description</code> <code>@mentions...</code> — log an expense you paid; choose to split it equally or by exact amounts (currency defaults to the group's if omitted)
+/split — log an expense you paid. A few ways to use it:
+<code>/split 90 dinner @alice @bob</code> — pick Equal or Exact after
+<code>/split equal 90 dinner @alice @bob</code> — split equally, no tap needed
+<code>/split exact 90 dinner @alice 50 @bob 40</code> — exact amounts, right in the command
+<code>/split exact 90 dinner @alice @bob</code> — exact split, enter amounts by replying
+<code>/split</code> or <code>/split dinner</code> — leave anything out and I'll ask for it
+(currency defaults to the group's if omitted; @mentions need to have run /start with me first)
 /members — list who I recognize in this group
 /currency <code>currency</code> — set this group's default currency
 /balance — see who owes you and who you owe

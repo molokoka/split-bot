@@ -1,6 +1,7 @@
 package split.telegram
 
 import split.core.GroupRepository
+import split.core.MemberId
 import split.core.PlatformDirectory
 
 class SplitExpenseCommand(
@@ -8,7 +9,8 @@ class SplitExpenseCommand(
     private val groupRepository: GroupRepository,
     private val identityResolver: IdentityResolver,
     private val telegramApi: TelegramApi,
-    private val flowStore: SplitFlowStore,
+    private val draftStore: SplitDraftStore,
+    private val flowStarter: SplitFlowStarter,
 ) {
     suspend fun handle(context: CommandContext) {
         val group = groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
@@ -20,7 +22,7 @@ class SplitExpenseCommand(
             return
         }
 
-        val participantIds = mutableListOf(context.memberId)
+        val mentionedMemberIds = mutableListOf<MemberId>()
         for (username in parsed.mentionUsernames) {
             val participantId = platformDirectory.findMemberByUsername(IdentityResolver.PLATFORM, username)
             if (participantId == null) {
@@ -30,26 +32,50 @@ class SplitExpenseCommand(
                 )
                 return
             }
-            participantIds += participantId
+            mentionedMemberIds += participantId
         }
-
-        val uniqueParticipantIds = participantIds.distinct()
-        for (participantId in uniqueParticipantIds) {
+        for (participantId in (listOf(context.memberId) + mentionedMemberIds).distinct()) {
             identityResolver.ensureGroupMembership(context.groupId, participantId)
         }
 
-        val promptMessageId = telegramApi.sendMessage(context.chatId, SPLIT_MODE_PROMPT, splitModeKeyboard())
-        flowStore.set(
+        if (parsed.description == null || parsed.amount == null || parsed.mentionUsernames.isEmpty()) {
+            startDraft(context, parsed)
+            return
+        }
+
+        flowStarter.start(
+            chatId = context.chatId,
+            invokerId = context.memberId,
+            groupId = context.groupId,
+            description = parsed.description,
+            amount = parsed.amount,
+            currency = parsed.currency,
+            mentionedMemberIds = mentionedMemberIds,
+            exactAmounts = parsed.exactAmounts,
+            splitTypeHint = parsed.splitTypeHint,
+        )
+    }
+
+    private suspend fun startDraft(context: CommandContext, parsed: PartialSplitArgs) {
+        val awaiting = when {
+            parsed.description == null -> SplitDraftField.DESCRIPTION
+            parsed.amount == null -> SplitDraftField.AMOUNT
+            else -> SplitDraftField.PARTICIPANTS
+        }
+        val promptMessageId = telegramApi.sendForceReplyPrompt(context.chatId, splitDraftPromptText(awaiting, parsed.currency))
+        draftStore.set(
             context.chatId,
-            PendingSplit(
+            PendingSplitDraft(
                 invokerId = context.memberId,
                 groupId = context.groupId,
-                amount = parsed.amount.setScale(2),
-                currency = parsed.currency,
+                splitTypeHint = parsed.splitTypeHint,
                 description = parsed.description,
-                participantIds = uniqueParticipantIds,
+                amount = parsed.amount,
+                currency = parsed.currency,
+                mentionUsernames = parsed.mentionUsernames,
+                exactAmounts = parsed.exactAmounts,
+                awaiting = awaiting,
                 promptMessageId = promptMessageId,
-                stage = SplitFlowStage.CHOOSING_MODE,
             ),
         )
     }

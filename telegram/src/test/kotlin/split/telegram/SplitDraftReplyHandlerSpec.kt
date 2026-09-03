@@ -8,9 +8,9 @@ import split.storage.ExposedGroupRepository
 import split.storage.ExposedMemberRepository
 import split.storage.ExposedPlatformDirectory
 
-class SplitExpenseCommandSpec : StringSpec({
+class SplitDraftReplyHandlerSpec : StringSpec({
 
-    "starts a split-mode choice flow for the sender and mentioned members" {
+    "completing description, amount, then participants starts the mode-choice flow" {
         withTestDatabase { db ->
             val platformDirectory = ExposedPlatformDirectory(db)
             val groupRepository = ExposedGroupRepository(db)
@@ -19,71 +19,7 @@ class SplitExpenseCommandSpec : StringSpec({
             val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
 
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100001")
-            resolver.ensureGroupMembership(groupId, aliceId)
-            val bobbyId = resolver.resolveMember("2", "bobby", "Bob") // Bob has run a command before, so @bobby resolves
-
-            val telegramApi = FakeTelegramApi()
-            val draftStore = SplitDraftStore()
-            val flowStore = SplitFlowStore()
-            val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-            val command = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
-
-            command.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner @bobby"))
-
-            expenseRepository.listActive(groupId) shouldBe emptyList()
-            telegramApi.sentMessages.single() shouldBe (-100L to SPLIT_MODE_PROMPT)
-            telegramApi.sentKeyboards.single() shouldBe splitModeKeyboard()
-
-            val flow = flowStore.get(-100)
-            flow?.invokerId shouldBe aliceId
-            flow?.groupId shouldBe groupId
-            flow?.amount shouldBe BigDecimal("90.00")
-            flow?.currency shouldBe "USD"
-            flow?.description shouldBe "dinner"
-            flow?.participantIds shouldBe listOf(aliceId, bobbyId)
-            flow?.stage shouldBe SplitFlowStage.CHOOSING_MODE
-            flow?.promptMessageId shouldBe 1L
-        }
-    }
-
-    "replies with an error and doesn't start a flow for an unrecognized mention" {
-        withTestDatabase { db ->
-            val platformDirectory = ExposedPlatformDirectory(db)
-            val groupRepository = ExposedGroupRepository(db)
-            val memberRepository = ExposedMemberRepository(db)
-            val expenseRepository = ExposedExpenseRepository(db)
-            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
-
-            val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100001")
-
-            val telegramApi = FakeTelegramApi()
-            val draftStore = SplitDraftStore()
-            val flowStore = SplitFlowStore()
-            val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-            val command = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
-
-            command.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner @stranger"))
-
-            expenseRepository.listActive(groupId) shouldBe emptyList()
-            flowStore.get(-100) shouldBe null
-            draftStore.get(-100) shouldBe null
-            telegramApi.sentMessages.single().second shouldBe
-                "I don't recognize @stranger yet — ask them to run /start with me first."
-        }
-    }
-
-    "the equal keyword creates the expense immediately, no flow" {
-        withTestDatabase { db ->
-            val platformDirectory = ExposedPlatformDirectory(db)
-            val groupRepository = ExposedGroupRepository(db)
-            val memberRepository = ExposedMemberRepository(db)
-            val expenseRepository = ExposedExpenseRepository(db)
-            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
-
-            val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100001")
+            val groupId = resolver.resolveGroup("-100")
             resolver.ensureGroupMembership(groupId, aliceId)
             val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
 
@@ -91,20 +27,65 @@ class SplitExpenseCommandSpec : StringSpec({
             val draftStore = SplitDraftStore()
             val flowStore = SplitFlowStore()
             val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-            val command = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val splitCommand = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val handler = SplitDraftReplyHandler(draftStore, platformDirectory, telegramApi, flowStarter)
 
-            command.handle(CommandContext(-100, aliceId, "1", groupId, "equal 90 dinner @bobby"))
+            splitCommand.handle(CommandContext(-100, aliceId, "1", groupId, ""))
+            var promptId = draftStore.get(-100)!!.promptMessageId
+            handler.handle(ReplyContext(-100, aliceId, groupId, promptId, "dinner"))
 
+            draftStore.get(-100)?.awaiting shouldBe SplitDraftField.AMOUNT
+            promptId = draftStore.get(-100)!!.promptMessageId
+            handler.handle(ReplyContext(-100, aliceId, groupId, promptId, "90"))
+
+            draftStore.get(-100)?.awaiting shouldBe SplitDraftField.PARTICIPANTS
+            promptId = draftStore.get(-100)!!.promptMessageId
+            handler.handle(ReplyContext(-100, aliceId, groupId, promptId, "@bobby"))
+
+            draftStore.get(-100) shouldBe null
+            expenseRepository.listActive(groupId) shouldBe emptyList()
+            flowStore.get(-100)?.stage shouldBe SplitFlowStage.CHOOSING_MODE
+            flowStore.get(-100)?.participantIds shouldBe listOf(aliceId, bobbyId)
+        }
+    }
+
+    "an equal keyword carried through the draft finishes without a mode-choice tap" {
+        withTestDatabase { db ->
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val groupRepository = ExposedGroupRepository(db)
+            val memberRepository = ExposedMemberRepository(db)
+            val expenseRepository = ExposedExpenseRepository(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+
+            val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            val groupId = resolver.resolveGroup("-100")
+            resolver.ensureGroupMembership(groupId, aliceId)
+            val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
+
+            val telegramApi = FakeTelegramApi()
+            val draftStore = SplitDraftStore()
+            val flowStore = SplitFlowStore()
+            val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
+            val splitCommand = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val handler = SplitDraftReplyHandler(draftStore, platformDirectory, telegramApi, flowStarter)
+
+            splitCommand.handle(CommandContext(-100, aliceId, "1", groupId, "equal @bobby"))
+            var promptId = draftStore.get(-100)!!.promptMessageId
+            handler.handle(ReplyContext(-100, aliceId, groupId, promptId, "dinner"))
+
+            promptId = draftStore.get(-100)!!.promptMessageId
+            handler.handle(ReplyContext(-100, aliceId, groupId, promptId, "90"))
+
+            draftStore.get(-100) shouldBe null
             val expense = expenseRepository.listActive(groupId).single()
             expense.shares.associate { it.memberId to it.shareAmount } shouldBe mapOf(
                 aliceId to BigDecimal("45.00"),
                 bobbyId to BigDecimal("45.00"),
             )
-            flowStore.get(-100) shouldBe null
         }
     }
 
-    "per-mention amounts create the exact-split expense immediately, no flow" {
+    "an empty description reply doesn't advance the draft" {
         withTestDatabase { db ->
             val platformDirectory = ExposedPlatformDirectory(db)
             val groupRepository = ExposedGroupRepository(db)
@@ -113,28 +94,27 @@ class SplitExpenseCommandSpec : StringSpec({
             val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
 
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100001")
+            val groupId = resolver.resolveGroup("-100")
             resolver.ensureGroupMembership(groupId, aliceId)
-            val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
 
             val telegramApi = FakeTelegramApi()
             val draftStore = SplitDraftStore()
             val flowStore = SplitFlowStore()
             val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-            val command = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val splitCommand = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val handler = SplitDraftReplyHandler(draftStore, platformDirectory, telegramApi, flowStarter)
 
-            command.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner @bobby 40"))
+            splitCommand.handle(CommandContext(-100, aliceId, "1", groupId, ""))
+            val promptId = draftStore.get(-100)!!.promptMessageId
 
-            val expense = expenseRepository.listActive(groupId).single()
-            expense.shares.associate { it.memberId to it.shareAmount } shouldBe mapOf(
-                aliceId to BigDecimal("50.00"),
-                bobbyId to BigDecimal("40.00"),
-            )
-            flowStore.get(-100) shouldBe null
+            handler.handle(ReplyContext(-100, aliceId, groupId, promptId, "   "))
+
+            draftStore.get(-100)?.awaiting shouldBe SplitDraftField.DESCRIPTION
+            draftStore.get(-100)?.description shouldBe null
         }
     }
 
-    "the exact keyword with no per-mention amounts jumps straight into entering amounts" {
+    "an invalid amount reply doesn't advance the draft" {
         withTestDatabase { db ->
             val platformDirectory = ExposedPlatformDirectory(db)
             val groupRepository = ExposedGroupRepository(db)
@@ -143,24 +123,87 @@ class SplitExpenseCommandSpec : StringSpec({
             val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
 
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100001")
+            val groupId = resolver.resolveGroup("-100")
             resolver.ensureGroupMembership(groupId, aliceId)
-            resolver.resolveMember("2", "bobby", "Bob")
 
             val telegramApi = FakeTelegramApi()
             val draftStore = SplitDraftStore()
             val flowStore = SplitFlowStore()
             val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-            val command = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val splitCommand = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val handler = SplitDraftReplyHandler(draftStore, platformDirectory, telegramApi, flowStarter)
 
-            command.handle(CommandContext(-100, aliceId, "1", groupId, "exact 90 dinner @bobby"))
+            splitCommand.handle(CommandContext(-100, aliceId, "1", groupId, "dinner"))
+            val promptId = draftStore.get(-100)!!.promptMessageId
+
+            handler.handle(ReplyContext(-100, aliceId, groupId, promptId, "not a number"))
+
+            draftStore.get(-100)?.awaiting shouldBe SplitDraftField.AMOUNT
+            draftStore.get(-100)?.amount shouldBe null
+        }
+    }
+
+    "an amount reply can override the currency" {
+        withTestDatabase { db ->
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val groupRepository = ExposedGroupRepository(db)
+            val memberRepository = ExposedMemberRepository(db)
+            val expenseRepository = ExposedExpenseRepository(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+
+            val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            val groupId = resolver.resolveGroup("-100")
+            resolver.ensureGroupMembership(groupId, aliceId)
+
+            val telegramApi = FakeTelegramApi()
+            val draftStore = SplitDraftStore()
+            val flowStore = SplitFlowStore()
+            val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
+            val splitCommand = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val handler = SplitDraftReplyHandler(draftStore, platformDirectory, telegramApi, flowStarter)
+
+            splitCommand.handle(CommandContext(-100, aliceId, "1", groupId, "dinner"))
+            val promptId = draftStore.get(-100)!!.promptMessageId
+
+            handler.handle(ReplyContext(-100, aliceId, groupId, promptId, "90 EUR"))
+
+            draftStore.get(-100)?.amount shouldBe BigDecimal("90")
+            draftStore.get(-100)?.currency shouldBe "EUR"
+            draftStore.get(-100)?.awaiting shouldBe SplitDraftField.PARTICIPANTS
+        }
+    }
+
+    "an unrecognized mention at the participants step errors and clears the draft" {
+        withTestDatabase { db ->
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val groupRepository = ExposedGroupRepository(db)
+            val memberRepository = ExposedMemberRepository(db)
+            val expenseRepository = ExposedExpenseRepository(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+
+            val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            val groupId = resolver.resolveGroup("-100")
+            resolver.ensureGroupMembership(groupId, aliceId)
+
+            val telegramApi = FakeTelegramApi()
+            val draftStore = SplitDraftStore()
+            val flowStore = SplitFlowStore()
+            val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
+            val splitCommand = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val handler = SplitDraftReplyHandler(draftStore, platformDirectory, telegramApi, flowStarter)
+
+            splitCommand.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner"))
+            val promptId = draftStore.get(-100)!!.promptMessageId
+
+            handler.handle(ReplyContext(-100, aliceId, groupId, promptId, "@stranger"))
 
             expenseRepository.listActive(groupId) shouldBe emptyList()
-            flowStore.get(-100)?.stage shouldBe SplitFlowStage.ENTERING_AMOUNTS
+            telegramApi.sentMessages.last().second shouldBe
+                "I don't recognize @stranger yet — ask them to run /start with me first."
         }
     }
 
-    "a bare /split starts the guided draft, asking for the description first" {
+    "a reply from someone other than the invoker is ignored" {
         withTestDatabase { db ->
             val platformDirectory = ExposedPlatformDirectory(db)
             val groupRepository = ExposedGroupRepository(db)
@@ -169,76 +212,23 @@ class SplitExpenseCommandSpec : StringSpec({
             val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
 
             val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100001")
+            val bobId = resolver.resolveMember("2", "bob", "Bob")
+            val groupId = resolver.resolveGroup("-100")
             resolver.ensureGroupMembership(groupId, aliceId)
 
             val telegramApi = FakeTelegramApi()
             val draftStore = SplitDraftStore()
             val flowStore = SplitFlowStore()
             val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-            val command = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val splitCommand = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
+            val handler = SplitDraftReplyHandler(draftStore, platformDirectory, telegramApi, flowStarter)
 
-            command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
+            splitCommand.handle(CommandContext(-100, aliceId, "1", groupId, ""))
+            val draftBefore = draftStore.get(-100)
 
-            val draft = draftStore.get(-100)
-            draft?.awaiting shouldBe SplitDraftField.DESCRIPTION
-            draft?.description shouldBe null
-            draft?.amount shouldBe null
-            draft?.mentionUsernames shouldBe emptyList()
-            telegramApi.sentForceReplyPrompts.single().second shouldBe splitDraftPromptText(SplitDraftField.DESCRIPTION, "USD")
-        }
-    }
+            handler.handle(ReplyContext(-100, bobId, groupId, draftBefore!!.promptMessageId, "dinner"))
 
-    "/split dinner starts the guided draft with the description pre-filled, asking for the amount" {
-        withTestDatabase { db ->
-            val platformDirectory = ExposedPlatformDirectory(db)
-            val groupRepository = ExposedGroupRepository(db)
-            val memberRepository = ExposedMemberRepository(db)
-            val expenseRepository = ExposedExpenseRepository(db)
-            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
-
-            val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100001")
-            resolver.ensureGroupMembership(groupId, aliceId)
-
-            val telegramApi = FakeTelegramApi()
-            val draftStore = SplitDraftStore()
-            val flowStore = SplitFlowStore()
-            val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-            val command = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
-
-            command.handle(CommandContext(-100, aliceId, "1", groupId, "dinner"))
-
-            val draft = draftStore.get(-100)
-            draft?.awaiting shouldBe SplitDraftField.AMOUNT
-            draft?.description shouldBe "dinner"
-        }
-    }
-
-    "/split @alice @bob starts the guided draft with participants pre-filled, asking for the description" {
-        withTestDatabase { db ->
-            val platformDirectory = ExposedPlatformDirectory(db)
-            val groupRepository = ExposedGroupRepository(db)
-            val memberRepository = ExposedMemberRepository(db)
-            val expenseRepository = ExposedExpenseRepository(db)
-            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
-
-            val aliceId = resolver.resolveMember("1", "alice", "Alice")
-            val groupId = resolver.resolveGroup("-100001")
-            resolver.ensureGroupMembership(groupId, aliceId)
-            resolver.resolveMember("2", "bobby", "Bob")
-
-            val telegramApi = FakeTelegramApi()
-            val draftStore = SplitDraftStore()
-            val flowStore = SplitFlowStore()
-            val flowStarter = SplitFlowStarter(flowStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-            val command = SplitExpenseCommand(platformDirectory, groupRepository, resolver, telegramApi, draftStore, flowStarter)
-
-            command.handle(CommandContext(-100, aliceId, "1", groupId, "@bobby"))
-
-            val draft = draftStore.get(-100)
-            draft?.awaiting shouldBe SplitDraftField.DESCRIPTION
-            draft?.mentionUsernames shouldBe listOf("bobby")
+            draftStore.get(-100) shouldBe draftBefore
         }
     }
 })
