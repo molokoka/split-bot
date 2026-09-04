@@ -1,7 +1,7 @@
 package split.telegram
 
-import java.math.BigDecimal
 import split.core.SplitType
+import java.math.BigDecimal
 
 internal val mentionPattern = Regex("@([a-zA-Z][a-zA-Z0-9_]{4,31})")
 private val numberAfterMention = Regex("^\\s+(\\d+(?:\\.\\d+)?)")
@@ -15,8 +15,7 @@ fun parseCommand(text: String): Pair<String, String> {
     return command to args
 }
 
-fun extractMentions(text: String): List<String> =
-    mentionPattern.findAll(text).map { it.groupValues[1] }.toList()
+fun extractMentions(text: String): List<String> = mentionPattern.findAll(text).map { it.groupValues[1] }.toList()
 
 data class PartialSplitArgs(
     val splitTypeHint: SplitType?,
@@ -29,14 +28,18 @@ data class PartialSplitArgs(
 
 private val currencyCodePattern = Regex("^[A-Z]{3}$")
 
-fun parseSplitArgs(args: String, defaultCurrency: String): PartialSplitArgs {
+fun parseSplitArgs(
+    args: String,
+    defaultCurrency: String,
+): PartialSplitArgs {
     val trimmedArgs = args.trim()
     val firstToken = trimmedArgs.substringBefore(' ', trimmedArgs)
-    val splitTypeHint = when (firstToken.lowercase()) {
-        "equal" -> SplitType.EQUAL
-        "exact" -> SplitType.EXACT
-        else -> null
-    }
+    val splitTypeHint =
+        when (firstToken.lowercase()) {
+            "equal" -> SplitType.EQUAL
+            "exact" -> SplitType.EXACT
+            else -> null
+        }
     val remaining = if (splitTypeHint != null) trimmedArgs.substringAfter(' ', "").trim() else trimmedArgs
 
     val mentionUsernames = mutableListOf<String>()
@@ -59,13 +62,14 @@ fun parseSplitArgs(args: String, defaultCurrency: String): PartialSplitArgs {
     withoutMentionsBuilder.append(remaining, cursor, remaining.length)
     val withoutMentions = withoutMentionsBuilder.toString().trim().replace(Regex("\\s+"), " ")
 
-    val exactAmounts = when {
-        exactAmountStrings.isEmpty() || exactAmountStrings.all { it == null } -> null
-        exactAmountStrings.all { it != null } -> exactAmountStrings.map { BigDecimal(it!!) }
-        else -> throw IllegalArgumentException(
-            "Give every mentioned person an amount, or none — not a mix, e.g. <code>@alice 50 @bob 40</code>",
-        )
-    }
+    val exactAmounts =
+        when {
+            exactAmountStrings.isEmpty() || exactAmountStrings.all { it == null } -> null
+            exactAmountStrings.all { it != null } -> exactAmountStrings.map { BigDecimal(it!!) }
+            else -> throw IllegalArgumentException(
+                "Give every mentioned person an amount, or none — not a mix, e.g. <code>@alice 50 @bob 40</code>",
+            )
+        }
     exactAmounts?.forEach { amount ->
         require(amount.signum() > 0 && amount.scale() <= 2) {
             "Amounts must be positive with at most 2 decimal places, e.g. <code>50</code> or <code>42.50</code>."
@@ -95,7 +99,10 @@ fun parseSplitArgs(args: String, defaultCurrency: String): PartialSplitArgs {
     }
 }
 
-data class SettleArgs(val counterpartyUsername: String, val amount: BigDecimal)
+data class SettleArgs(
+    val counterpartyUsername: String,
+    val amount: BigDecimal,
+)
 
 fun parseSettleArgs(args: String): SettleArgs {
     val mentions = extractMentions(args)

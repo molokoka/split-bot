@@ -20,8 +20,10 @@ class DeleteExpenseCommand(
         }
 
         groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
-        val expense = expenseRepository.listActive(context.groupId)
-            .firstOrNull { it.id.value.startsWith(idPrefix, ignoreCase = true) }
+        val expense =
+            expenseRepository
+                .listActive(context.groupId)
+                .firstOrNull { it.id.value.startsWith(idPrefix, ignoreCase = true) }
 
         if (expense == null) {
             telegramApi.sendMessage(context.chatId, "No active expense found matching \"${escapeHtml(idPrefix)}\" — check /expenses.")

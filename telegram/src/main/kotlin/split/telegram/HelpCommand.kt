@@ -31,7 +31,9 @@ internal const val HELP_TEXT = """Commands:
 
 To mention someone in <code>/split</code> or <code>/settle</code>, they need to have sent me /start at least once."""
 
-class HelpCommand(private val telegramApi: TelegramApi) {
+class HelpCommand(
+    private val telegramApi: TelegramApi,
+) {
     suspend fun handle(context: CommandContext) {
         telegramApi.sendMessage(context.chatId, HELP_TEXT)
     }

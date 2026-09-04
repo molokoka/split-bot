@@ -18,12 +18,13 @@ class SettleCommand(
     private val clock: Clock = Clock.systemUTC(),
 ) {
     suspend fun handle(context: CommandContext) {
-        val parsed = try {
-            parseSettleArgs(context.args)
-        } catch (e: IllegalArgumentException) {
-            telegramApi.sendMessage(context.chatId, e.message ?: "Invalid /settle usage")
-            return
-        }
+        val parsed =
+            try {
+                parseSettleArgs(context.args)
+            } catch (e: IllegalArgumentException) {
+                telegramApi.sendMessage(context.chatId, e.message ?: "Invalid /settle usage")
+                return
+            }
 
         val counterpartyId = platformDirectory.findMemberByUsername(IdentityResolver.PLATFORM, parsed.counterpartyUsername)
         if (counterpartyId == null) {
@@ -36,21 +37,22 @@ class SettleCommand(
 
         val group = groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
 
-        val settlement = try {
-            createSettlement(
-                id = SettlementId(idGenerator()),
-                groupId = context.groupId,
-                currency = group.defaultCurrency,
-                from = context.memberId,
-                to = counterpartyId,
-                amount = parsed.amount,
-                createdBy = context.memberId,
-                createdAt = Instant.now(clock),
-            )
-        } catch (e: IllegalArgumentException) {
-            telegramApi.sendMessage(context.chatId, e.message ?: "Invalid /settle amount")
-            return
-        }
+        val settlement =
+            try {
+                createSettlement(
+                    id = SettlementId(idGenerator()),
+                    groupId = context.groupId,
+                    currency = group.defaultCurrency,
+                    from = context.memberId,
+                    to = counterpartyId,
+                    amount = parsed.amount,
+                    createdBy = context.memberId,
+                    createdAt = Instant.now(clock),
+                )
+            } catch (e: IllegalArgumentException) {
+                telegramApi.sendMessage(context.chatId, e.message ?: "Invalid /settle amount")
+                return
+            }
 
         settlementRepository.create(settlement)
         telegramApi.sendMessage(

@@ -63,14 +63,23 @@ class CommandRouter(
         val message = callbackQuery.message ?: return
         val data = callbackQuery.data ?: return
 
-        val memberId = identityResolver.resolveMember(callbackQuery.from.id.toString(), callbackQuery.from.username, callbackQuery.from.firstName)
+        val memberId =
+            identityResolver.resolveMember(
+                callbackQuery.from.id.toString(),
+                callbackQuery.from.username,
+                callbackQuery.from.firstName,
+            )
         val groupId = identityResolver.resolveGroup(message.chat.id.toString())
         identityResolver.ensureGroupMembership(groupId, memberId)
 
         handler(CallbackContext(message.chat.id, memberId, groupId, callbackQuery.id, message.messageId, data))
     }
 
-    private suspend fun handleCommand(message: TgMessage, from: TgUser, text: String) {
+    private suspend fun handleCommand(
+        message: TgMessage,
+        from: TgUser,
+        text: String,
+    ) {
         val (command, args) = parseCommand(text)
         val handler = handlers[command] ?: return
 
@@ -81,7 +90,11 @@ class CommandRouter(
         handler(CommandContext(message.chat.id, memberId, from.id.toString(), groupId, args))
     }
 
-    private suspend fun handleReply(message: TgMessage, from: TgUser, text: String) {
+    private suspend fun handleReply(
+        message: TgMessage,
+        from: TgUser,
+        text: String,
+    ) {
         val handler = replyHandler ?: return
         val replyToId = message.replyToMessage?.messageId ?: return
         if (!isTrackedReply(message.chat.id, replyToId)) return

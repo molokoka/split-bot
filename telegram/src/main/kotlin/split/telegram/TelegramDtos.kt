@@ -128,7 +128,9 @@ sealed interface RichBlock
 
 @Serializable
 @SerialName("paragraph")
-data class RichBlockParagraph(val text: String) : RichBlock
+data class RichBlockParagraph(
+    val text: String,
+) : RichBlock
 
 @Serializable
 @SerialName("table")

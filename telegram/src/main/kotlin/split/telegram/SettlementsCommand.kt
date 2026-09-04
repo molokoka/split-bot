@@ -14,9 +14,11 @@ class SettlementsCommand(
 ) {
     suspend fun handle(context: CommandContext) {
         groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
-        val settlements = settlementRepository.listActive(context.groupId)
-            .sortedBy { it.createdAt }
-            .takeLast(10)
+        val settlements =
+            settlementRepository
+                .listActive(context.groupId)
+                .sortedBy { it.createdAt }
+                .takeLast(10)
         val members = memberRepository.findByGroup(context.groupId)
         val usernames = platformDirectory.findUsernames(IdentityResolver.PLATFORM, members.map { it.id })
 

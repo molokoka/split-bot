@@ -18,17 +18,21 @@ class IdentityResolver(
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
     private val clock: Clock = Clock.systemUTC(),
 ) {
-
-    suspend fun resolveMember(externalUserId: String, username: String?, displayName: String): MemberId {
+    suspend fun resolveMember(
+        externalUserId: String,
+        username: String?,
+        displayName: String,
+    ): MemberId {
         val existing = platformDirectory.findMember(PLATFORM, externalUserId)
-        val memberId = if (existing != null) {
-            existing
-        } else {
-            val newId = MemberId(idGenerator())
-            memberRepository.create(Member(newId, displayName))
-            platformDirectory.linkMember(PLATFORM, externalUserId, newId)
-            newId
-        }
+        val memberId =
+            if (existing != null) {
+                existing
+            } else {
+                val newId = MemberId(idGenerator())
+                memberRepository.create(Member(newId, displayName))
+                platformDirectory.linkMember(PLATFORM, externalUserId, newId)
+                newId
+            }
         if (username != null) {
             platformDirectory.setUsername(PLATFORM, externalUserId, username)
         }
@@ -45,7 +49,10 @@ class IdentityResolver(
         return newId
     }
 
-    suspend fun ensureGroupMembership(groupId: GroupId, memberId: MemberId) {
+    suspend fun ensureGroupMembership(
+        groupId: GroupId,
+        memberId: MemberId,
+    ) {
         val members = memberRepository.findByGroup(groupId)
         if (members.none { it.id == memberId }) {
             groupRepository.addMember(groupId, memberId)

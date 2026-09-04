@@ -21,9 +21,10 @@ class BalanceCommand(
         groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
         val expenses = expenseRepository.listActive(context.groupId)
         val settlements = settlementRepository.listActive(context.groupId)
-        val paymentsByCurrency = distinctCurrencies(expenses, settlements).associateWith { currency ->
-            simplifyDebts(computeBalances(currency, expenses, settlements))
-        }
+        val paymentsByCurrency =
+            distinctCurrencies(expenses, settlements).associateWith { currency ->
+                simplifyDebts(computeBalances(currency, expenses, settlements))
+            }
         val members = memberRepository.findByGroup(context.groupId)
         val usernames = platformDirectory.findUsernames(IdentityResolver.PLATFORM, members.map { it.id })
 
