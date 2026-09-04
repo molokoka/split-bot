@@ -72,10 +72,12 @@ isn't from the invoker it's simply not treated as this flow's answer
 
 ## Data flow / state
 
-New in-process, in-memory `SplitFlowStore`: a plain `MutableMap<Long,
-PendingSplit>` keyed by chat id — no synchronization needed, since
-`PollLoop` already processes updates one at a time, sequentially (see
-`BotApplication.kt`). Not persisted to SQLite.
+New in-process, in-memory `SplitStateStore`: a plain `MutableMap<Long,
+SplitState>` keyed by chat id, where `SplitState` is either a
+`PendingSplitDraft` (the guided-question phase) or a `PendingSplit` (mode
+chosen, expense fields known) — a chat holds at most one, never both. No
+synchronization needed, since `PollLoop` already processes updates one at a
+time, sequentially (see `BotApplication.kt`). Not persisted to SQLite.
 
 `PendingSplit` holds: the invoker's `MemberId`, the parsed expense fields
 (amount, currency, description), the ordered participant list, amounts
@@ -93,6 +95,51 @@ or throwing.
 scale (a handful of friends, single small instance) — a restart mid-entry
 just means re-running `/split`. Not persisting this to SQLite avoids a
 migration/table for what is, by nature, transient UI state.
+
+## Diagrams
+
+### Diagram 1 — the guided flow end to end
+
+```mermaid
+flowchart TD
+    Start["/split invoked"] --> Complete{"description, amount,\nand mentions all given?"}
+    Complete -- no --> Draft["PendingSplitDraft\nasks for the missing fields,\none reply at a time"]
+    Draft -->|field answered, one still missing| Draft
+    Draft -->|all fields collected| Starter
+    Complete -- yes --> Starter["SplitFlowStarter.start"]
+    Starter --> Inline{"exact amounts\ngiven inline?"}
+    Inline -- yes --> Exact1["create EXACT expense\nimmediately"]
+    Inline -- no --> Hint{splitTypeHint}
+    Hint -- EQUAL --> Equal1["create EQUAL expense\nimmediately"]
+    Hint -- EXACT --> Entering["PendingSplit: ENTERING_AMOUNTS\n(mode choice skipped)"]
+    Hint -- none --> Choosing["PendingSplit: CHOOSING_MODE\nEqual / Exact buttons"]
+    Choosing -->|tap Equal| Equal1
+    Choosing -->|tap Exact| Entering
+    Entering --> Loop["prompt each participant,\nauto-advancing — see Diagram 2"]
+    Loop -->|Confirm, sum matches total| Exact2["create EXACT expense"]
+    Loop -->|Cancel| Cancelled["flow cleared,\nno expense created"]
+```
+
+### Diagram 2 — stages and the auto-advance flag
+
+```mermaid
+stateDiagram-v2
+    [*] --> CHOOSING_MODE
+    CHOOSING_MODE --> [*]: tap Equal — expense created
+    CHOOSING_MODE --> ENTERING_AMOUNTS: tap Exact
+
+    state ENTERING_AMOUNTS {
+        [*] --> AutoAdvancing
+        AutoAdvancing --> AutoAdvancing: valid reply, unfilled\nparticipants remain
+        AutoAdvancing --> NothingPending: valid reply, every\nparticipant now filled
+        AutoAdvancing --> ManuallyPinned: tap a participant button\n(pendingIsAutoAdvance = false)
+        ManuallyPinned --> NothingPending: valid reply\n(auto-advance suppressed)
+        ManuallyPinned --> ManuallyPinned: tap a different\nparticipant button
+        NothingPending --> ManuallyPinned: tap a participant button\n(edit before confirming)
+    }
+    ENTERING_AMOUNTS --> [*]: Confirm — sum matches total
+    ENTERING_AMOUNTS --> [*]: Cancel
+```
 
 ## New Bot API surface
 
