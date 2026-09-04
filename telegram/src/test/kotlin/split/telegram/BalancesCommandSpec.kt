@@ -214,4 +214,71 @@ class BalancesCommandSpec : StringSpec({
             telegramApi.sentMessages shouldBe listOf(-100L to "Balances:\n\n@bob owes @alice 30.00 USD")
         }
     }
+
+    "lists three members' balances across two currencies in a single message" {
+        withTestDatabase { db ->
+            val groupRepository = ExposedGroupRepository(db)
+            val memberRepository = ExposedMemberRepository(db)
+            val expenseRepository = ExposedExpenseRepository(db)
+            val settlementRepository = ExposedSettlementRepository(db)
+            val platformDirectory = ExposedPlatformDirectory(db)
+            val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+
+            val aliceId = resolver.resolveMember("1", "alice", "Alice")
+            val bobId = resolver.resolveMember("2", "bob", "Bob")
+            val carolId = resolver.resolveMember("3", "carol", "Carol")
+            val groupId = resolver.resolveGroup("-100001")
+            resolver.ensureGroupMembership(groupId, aliceId)
+            resolver.ensureGroupMembership(groupId, bobId)
+            resolver.ensureGroupMembership(groupId, carolId)
+
+            // USD: Alice pays $90 for dinner. Bob owes Alice $10, Carol owes Alice $20.
+            expenseRepository.create(
+                Expense(
+                    id = ExpenseId("e1"),
+                    groupId = groupId,
+                    currency = "USD",
+                    description = "dinner",
+                    amount = BigDecimal("90.00"),
+                    payerId = aliceId,
+                    splitType = SplitType.EXACT,
+                    createdBy = aliceId,
+                    createdAt = Instant.parse("2026-08-28T00:00:00Z"),
+                    shares = listOf(
+                        ExpenseShare(aliceId, BigDecimal("60.00")),
+                        ExpenseShare(bobId, BigDecimal("10.00")),
+                        ExpenseShare(carolId, BigDecimal("20.00")),
+                    ),
+                ),
+            )
+            // EUR: Bob pays €30 for a taxi with only Carol — Alice isn't part of this one.
+            // Carol owes Bob €10.
+            expenseRepository.create(
+                Expense(
+                    id = ExpenseId("e2"),
+                    groupId = groupId,
+                    currency = "EUR",
+                    description = "taxi",
+                    amount = BigDecimal("30.00"),
+                    payerId = bobId,
+                    splitType = SplitType.EXACT,
+                    createdBy = bobId,
+                    createdAt = Instant.parse("2026-08-29T00:00:00Z"),
+                    shares = listOf(
+                        ExpenseShare(bobId, BigDecimal("20.00")),
+                        ExpenseShare(carolId, BigDecimal("10.00")),
+                    ),
+                ),
+            )
+
+            val telegramApi = FakeTelegramApi()
+            val command = BalancesCommand(groupRepository, memberRepository, expenseRepository, settlementRepository, platformDirectory, telegramApi)
+
+            command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
+
+            telegramApi.sentMessages shouldBe listOf(
+                -100L to "Balances:\n\n@carol owes @bob 10.00 EUR\n@carol owes @alice 20.00 USD\n@bob owes @alice 10.00 USD",
+            )
+        }
+    }
 })
