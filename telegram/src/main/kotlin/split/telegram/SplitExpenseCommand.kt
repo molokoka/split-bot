@@ -11,18 +11,19 @@ class SplitExpenseCommand(
     private val memberRepository: MemberRepository,
     private val identityResolver: IdentityResolver,
     private val telegramApi: TelegramApi,
-    private val draftStore: SplitDraftStore,
+    private val splitStateStore: SplitStateStore,
     private val flowStarter: SplitFlowStarter,
 ) {
     suspend fun handle(context: CommandContext) {
         val group = groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
 
-        val parsed = try {
-            parseSplitArgs(context.args, group.defaultCurrency)
-        } catch (e: IllegalArgumentException) {
-            telegramApi.sendMessage(context.chatId, e.message ?: "Invalid /split usage")
-            return
-        }
+        val parsed =
+            try {
+                parseSplitArgs(context.args, group.defaultCurrency)
+            } catch (e: IllegalArgumentException) {
+                telegramApi.sendMessage(context.chatId, e.message ?: "Invalid /split usage")
+                return
+            }
 
         val mentionedMemberIds = mutableListOf<MemberId>()
         for (username in parsed.mentionUsernames) {
@@ -58,19 +59,28 @@ class SplitExpenseCommand(
         )
     }
 
-    private suspend fun startDraft(context: CommandContext, parsed: PartialSplitArgs) {
-        val awaiting = when {
-            parsed.description == null -> SplitDraftField.DESCRIPTION
-            parsed.amount == null -> SplitDraftField.AMOUNT
-            else -> SplitDraftField.PARTICIPANTS
-        }
-        val knownUsernames = if (awaiting == SplitDraftField.PARTICIPANTS) {
-            knownUsernamesExcluding(memberRepository, platformDirectory, context.groupId, context.memberId)
-        } else {
-            emptyList()
-        }
-        val promptMessageId = telegramApi.sendForceReplyPrompt(context.chatId, splitDraftPromptText(awaiting, parsed.currency, knownUsernames))
-        draftStore.set(
+    private suspend fun startDraft(
+        context: CommandContext,
+        parsed: PartialSplitArgs,
+    ) {
+        val awaiting =
+            when {
+                parsed.description == null -> SplitDraftField.DESCRIPTION
+                parsed.amount == null -> SplitDraftField.AMOUNT
+                else -> SplitDraftField.PARTICIPANTS
+            }
+        val knownUsernames =
+            if (awaiting == SplitDraftField.PARTICIPANTS) {
+                knownUsernamesExcluding(memberRepository, platformDirectory, context.groupId, context.memberId)
+            } else {
+                emptyList()
+            }
+        val promptMessageId =
+            telegramApi.sendForceReplyPrompt(
+                context.chatId,
+                splitDraftPromptText(awaiting, parsed.currency, knownUsernames),
+            )
+        splitStateStore.set(
             context.chatId,
             PendingSplitDraft(
                 invokerId = context.memberId,

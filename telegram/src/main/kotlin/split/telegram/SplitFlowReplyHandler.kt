@@ -4,13 +4,13 @@ import split.core.MemberRepository
 import split.core.PlatformDirectory
 
 class SplitFlowReplyHandler(
-    private val flowStore: SplitFlowStore,
+    private val splitStateStore: SplitStateStore,
     private val memberRepository: MemberRepository,
     private val platformDirectory: PlatformDirectory,
     private val telegramApi: TelegramApi,
 ) {
     suspend fun handle(context: ReplyContext) {
-        val flow = flowStore.get(context.chatId) ?: return
+        val flow = splitStateStore.get(context.chatId) as? PendingSplit ?: return
         if (flow.stage != SplitFlowStage.ENTERING_AMOUNTS) return
         if (context.replyToMessageId != flow.pendingPromptMessageId) return
         if (context.memberId != flow.invokerId) return
@@ -18,7 +18,10 @@ class SplitFlowReplyHandler(
 
         val amount = context.text.trim().toBigDecimalOrNull()
         if (amount == null || amount.scale() > 2 || amount.signum() <= 0) {
-            telegramApi.sendMessage(context.chatId, "That doesn't look like an amount — reply with a positive number with at most 2 decimal places, e.g. 42.50.")
+            telegramApi.sendMessage(
+                context.chatId,
+                "That doesn't look like an amount — reply with a positive number with at most 2 decimal places, e.g. 42.50.",
+            )
             return
         }
 
@@ -34,38 +37,41 @@ class SplitFlowReplyHandler(
             splitParticipantKeyboard(flow.participantIds, updatedAmounts, nameOf, usernames, flow.currency),
         )
         val canConfirm = splitIsReadyToConfirm(flow.participantIds, updatedAmounts, flow.amount)
-        val newActionsMessageId = flow.actionsMessageId?.let { oldActionsMessageId ->
-            telegramApi.deleteMessage(context.chatId, oldActionsMessageId)
-            telegramApi.sendMessage(
-                context.chatId,
-                splitActionsText(updatedAmounts, flow.amount, flow.currency),
-                splitActionsKeyboard(canConfirm),
-            )
-        }
+        val newActionsMessageId =
+            flow.actionsMessageId?.let { oldActionsMessageId ->
+                telegramApi.deleteMessage(context.chatId, oldActionsMessageId)
+                telegramApi.sendMessage(
+                    context.chatId,
+                    splitActionsText(updatedAmounts, flow.amount, flow.currency),
+                    splitActionsKeyboard(canConfirm),
+                )
+            }
 
-        val nextParticipantId = if (flow.pendingIsAutoAdvance) {
-            flow.participantIds.firstOrNull { it !in updatedAmounts }
-        } else {
-            null
-        }
-        val updatedFlow = if (nextParticipantId != null) {
-            val promptMessageId = sendParticipantAmountPrompt(context.chatId, nextParticipantId, members, usernames, telegramApi)
-            flow.copy(
-                amountsEntered = updatedAmounts,
-                actionsMessageId = newActionsMessageId ?: flow.actionsMessageId,
-                pendingParticipantId = nextParticipantId,
-                pendingPromptMessageId = promptMessageId,
-                pendingIsAutoAdvance = true,
-            )
-        } else {
-            flow.copy(
-                amountsEntered = updatedAmounts,
-                actionsMessageId = newActionsMessageId ?: flow.actionsMessageId,
-                pendingParticipantId = null,
-                pendingPromptMessageId = null,
-                pendingIsAutoAdvance = true,
-            )
-        }
-        flowStore.set(context.chatId, updatedFlow)
+        val nextParticipantId =
+            if (flow.pendingIsAutoAdvance) {
+                flow.participantIds.firstOrNull { it !in updatedAmounts }
+            } else {
+                null
+            }
+        val updatedFlow =
+            if (nextParticipantId != null) {
+                val promptMessageId = sendParticipantAmountPrompt(context.chatId, nextParticipantId, members, usernames, telegramApi)
+                flow.copy(
+                    amountsEntered = updatedAmounts,
+                    actionsMessageId = newActionsMessageId ?: flow.actionsMessageId,
+                    pendingParticipantId = nextParticipantId,
+                    pendingPromptMessageId = promptMessageId,
+                    pendingIsAutoAdvance = true,
+                )
+            } else {
+                flow.copy(
+                    amountsEntered = updatedAmounts,
+                    actionsMessageId = newActionsMessageId ?: flow.actionsMessageId,
+                    pendingParticipantId = null,
+                    pendingPromptMessageId = null,
+                    pendingIsAutoAdvance = true,
+                )
+            }
+        splitStateStore.set(context.chatId, updatedFlow)
     }
 }

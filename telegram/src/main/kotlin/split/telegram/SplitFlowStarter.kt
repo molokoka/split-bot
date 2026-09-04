@@ -40,7 +40,7 @@ internal suspend fun sendParticipantAmountPrompt(
 }
 
 class SplitFlowStarter(
-    private val flowStore: SplitFlowStore,
+    private val splitStateStore: SplitStateStore,
     private val memberRepository: MemberRepository,
     private val platformDirectory: PlatformDirectory,
     private val expenseRepository: ExpenseRepository,
@@ -106,7 +106,10 @@ class SplitFlowStarter(
         if (invokerShare.signum() < 0) {
             telegramApi.sendMessage(
                 chatId,
-                "The amounts given (${formatAmount(mentionedTotal, currency)}) add up to more than the total (${formatAmount(amount, currency)}).",
+                "The amounts given (${formatAmount(
+                    mentionedTotal,
+                    currency,
+                )}) add up to more than the total (${formatAmount(amount, currency)}).",
             )
             return
         }
@@ -127,19 +130,21 @@ class SplitFlowStarter(
     ) {
         val (members, usernames) = membersAndUsernames(groupId)
         val nameOf = members.associateBy { it.id }
-        val tableMessageId = telegramApi.sendRichMessage(
-            chatId,
-            splitAmountsTable(participantIds, emptyMap(), nameOf, usernames, currency),
-            splitParticipantKeyboard(participantIds, emptyMap(), nameOf, usernames, currency),
-        )
-        val actionsMessageId = telegramApi.sendMessage(
-            chatId,
-            splitActionsText(emptyMap(), amount, currency),
-            splitActionsKeyboard(canConfirm = false),
-        )
+        val tableMessageId =
+            telegramApi.sendRichMessage(
+                chatId,
+                splitAmountsTable(participantIds, emptyMap(), nameOf, usernames, currency),
+                splitParticipantKeyboard(participantIds, emptyMap(), nameOf, usernames, currency),
+            )
+        val actionsMessageId =
+            telegramApi.sendMessage(
+                chatId,
+                splitActionsText(emptyMap(), amount, currency),
+                splitActionsKeyboard(canConfirm = false),
+            )
         val firstParticipantId = participantIds.first()
         val promptMessageId = sendParticipantAmountPrompt(chatId, firstParticipantId, members, usernames, telegramApi)
-        flowStore.set(
+        splitStateStore.set(
             chatId,
             PendingSplit(
                 invokerId = invokerId,
@@ -167,7 +172,7 @@ class SplitFlowStarter(
         participantIds: List<MemberId>,
     ) {
         val promptMessageId = telegramApi.sendMessage(chatId, SPLIT_MODE_PROMPT, splitModeKeyboard())
-        flowStore.set(
+        splitStateStore.set(
             chatId,
             PendingSplit(
                 invokerId = invokerId,
@@ -197,18 +202,19 @@ class SplitFlowStarter(
         splitType: SplitType,
         shares: List<ExpenseShare>,
     ): Expense {
-        val expense = Expense(
-            id = ExpenseId(idGenerator()),
-            groupId = groupId,
-            currency = currency,
-            description = description,
-            amount = amount,
-            payerId = invokerId,
-            splitType = splitType,
-            createdBy = invokerId,
-            createdAt = Instant.now(clock),
-            shares = shares,
-        )
+        val expense =
+            Expense(
+                id = ExpenseId(idGenerator()),
+                groupId = groupId,
+                currency = currency,
+                description = description,
+                amount = amount,
+                payerId = invokerId,
+                splitType = splitType,
+                createdBy = invokerId,
+                createdAt = Instant.now(clock),
+                shares = shares,
+            )
         expenseRepository.create(expense)
         return expense
     }

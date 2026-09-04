@@ -7,14 +7,14 @@ import split.core.PlatformDirectory
 private val amountWithOptionalCurrency = Regex("^(\\d+(?:\\.\\d+)?)(?:\\s+([A-Z]{3}))?$")
 
 class SplitDraftReplyHandler(
-    private val draftStore: SplitDraftStore,
+    private val splitStateStore: SplitStateStore,
     private val memberRepository: MemberRepository,
     private val platformDirectory: PlatformDirectory,
     private val telegramApi: TelegramApi,
     private val flowStarter: SplitFlowStarter,
 ) {
     suspend fun handle(context: ReplyContext) {
-        val draft = draftStore.get(context.chatId) ?: return
+        val draft = splitStateStore.get(context.chatId) as? PendingSplitDraft ?: return
         if (context.replyToMessageId != draft.promptMessageId) return
         if (context.memberId != draft.invokerId) return
 
@@ -25,7 +25,10 @@ class SplitDraftReplyHandler(
         }
     }
 
-    private suspend fun handleDescription(context: ReplyContext, draft: PendingSplitDraft) {
+    private suspend fun handleDescription(
+        context: ReplyContext,
+        draft: PendingSplitDraft,
+    ) {
         val description = context.text.trim()
         if (description.isEmpty()) {
             telegramApi.sendMessage(context.chatId, "That's empty — reply with a short description, e.g. \"dinner\".")
@@ -34,7 +37,10 @@ class SplitDraftReplyHandler(
         advance(context, draft.copy(description = description))
     }
 
-    private suspend fun handleAmount(context: ReplyContext, draft: PendingSplitDraft) {
+    private suspend fun handleAmount(
+        context: ReplyContext,
+        draft: PendingSplitDraft,
+    ) {
         val match = amountWithOptionalCurrency.matchEntire(context.text.trim())
         val amount = match?.groupValues?.get(1)?.toBigDecimalOrNull()
         if (amount == null || amount.signum() <= 0 || amount.scale() > 2) {
@@ -48,7 +54,10 @@ class SplitDraftReplyHandler(
         advance(context, draft.copy(amount = amount, currency = currency))
     }
 
-    private suspend fun handleParticipants(context: ReplyContext, draft: PendingSplitDraft) {
+    private suspend fun handleParticipants(
+        context: ReplyContext,
+        draft: PendingSplitDraft,
+    ) {
         val mentions = extractMentions(context.text)
         if (mentions.isEmpty()) {
             telegramApi.sendMessage(context.chatId, "Mention at least one participant, e.g. <code>@alice @bob</code>.")
@@ -57,24 +66,30 @@ class SplitDraftReplyHandler(
         advance(context, draft.copy(mentionUsernames = mentions))
     }
 
-    private suspend fun advance(context: ReplyContext, updated: PendingSplitDraft) {
-        val nextField = when {
-            updated.description == null -> SplitDraftField.DESCRIPTION
-            updated.amount == null -> SplitDraftField.AMOUNT
-            updated.mentionUsernames.isEmpty() -> SplitDraftField.PARTICIPANTS
-            else -> null
-        }
-        if (nextField != null) {
-            val knownUsernames = if (nextField == SplitDraftField.PARTICIPANTS) {
-                knownUsernamesExcluding(memberRepository, platformDirectory, updated.groupId, updated.invokerId)
-            } else {
-                emptyList()
+    private suspend fun advance(
+        context: ReplyContext,
+        updated: PendingSplitDraft,
+    ) {
+        val nextField =
+            when {
+                updated.description == null -> SplitDraftField.DESCRIPTION
+                updated.amount == null -> SplitDraftField.AMOUNT
+                updated.mentionUsernames.isEmpty() -> SplitDraftField.PARTICIPANTS
+                else -> null
             }
-            val promptMessageId = telegramApi.sendForceReplyPrompt(
-                context.chatId,
-                splitDraftPromptText(nextField, updated.currency, knownUsernames),
-            )
-            draftStore.set(context.chatId, updated.copy(awaiting = nextField, promptMessageId = promptMessageId))
+        if (nextField != null) {
+            val knownUsernames =
+                if (nextField == SplitDraftField.PARTICIPANTS) {
+                    knownUsernamesExcluding(memberRepository, platformDirectory, updated.groupId, updated.invokerId)
+                } else {
+                    emptyList()
+                }
+            val promptMessageId =
+                telegramApi.sendForceReplyPrompt(
+                    context.chatId,
+                    splitDraftPromptText(nextField, updated.currency, knownUsernames),
+                )
+            splitStateStore.set(context.chatId, updated.copy(awaiting = nextField, promptMessageId = promptMessageId))
             return
         }
 
@@ -82,12 +97,15 @@ class SplitDraftReplyHandler(
         for (username in updated.mentionUsernames) {
             val participantId = platformDirectory.findMemberByUsername(IdentityResolver.PLATFORM, username)
             if (participantId == null) {
-                telegramApi.sendMessage(context.chatId, "I don't recognize <code>@$username</code> yet — ask them to run /start with me first.")
+                telegramApi.sendMessage(
+                    context.chatId,
+                    "I don't recognize <code>@$username</code> yet — ask them to run /start with me first.",
+                )
                 return
             }
             mentionedMemberIds += participantId
         }
-        draftStore.clear(context.chatId)
+        splitStateStore.clear(context.chatId)
         flowStarter.start(
             chatId = context.chatId,
             invokerId = updated.invokerId,
