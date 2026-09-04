@@ -8,41 +8,44 @@ import split.storage.ExposedGroupRepository
 import split.storage.ExposedMemberRepository
 import split.storage.ExposedPlatformDirectory
 
-class HelpCommandSpec : StringSpec({
+class HelpCommandSpec :
+    StringSpec({
 
-    val context = CommandContext(
-        chatId = -1,
-        memberId = MemberId("m1"),
-        externalUserId = "1",
-        groupId = GroupId("g1"),
-        args = "",
-    )
+        val context =
+            CommandContext(
+                chatId = -1,
+                memberId = MemberId("m1"),
+                externalUserId = "1",
+                groupId = GroupId("g1"),
+                args = "",
+            )
 
-    "HelpCommand sends the help text" {
-        val telegramApi = FakeTelegramApi()
-
-        HelpCommand(telegramApi).handle(context)
-
-        telegramApi.sentMessages shouldBe listOf(-1L to HELP_TEXT)
-    }
-
-    "StartCommand states the group's default currency and the /start-first rule, then the help text" {
-        withTestDatabase { db ->
-            val groupRepository = ExposedGroupRepository(db)
-            val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)
-            val groupId = resolver.resolveGroup("-100001")
+        "HelpCommand sends the help text" {
             val telegramApi = FakeTelegramApi()
 
-            StartCommand(groupRepository, telegramApi).handle(context.copy(groupId = groupId))
+            HelpCommand(telegramApi).handle(context)
 
-            telegramApi.sentMessages shouldBe listOf(
-                -1L to (
-                    "Hi! I'll help you split expenses in this group.\n\n" +
-                        "This group's default currency is USD — change it anytime with /currency.\n\n" +
-                        "Before you can @mention someone in /split, they need to send me /start too.\n\n" +
-                        HELP_TEXT
-                    ),
-            )
+            telegramApi.sentMessages shouldBe listOf(-1L to HELP_TEXT)
         }
-    }
-})
+
+        "StartCommand states the group's default currency and the /start-first rule, then the help text" {
+            withTestDatabase { db ->
+                val groupRepository = ExposedGroupRepository(db)
+                val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)
+                val groupId = resolver.resolveGroup("-100001")
+                val telegramApi = FakeTelegramApi()
+
+                StartCommand(groupRepository, telegramApi).handle(context.copy(groupId = groupId))
+
+                telegramApi.sentMessages shouldBe
+                    listOf(
+                        -1L to (
+                            "Hi! I'll help you split expenses in this group.\n\n" +
+                                "This group's default currency is USD — change it anytime with /currency.\n\n" +
+                                "Before you can mention someone in /split, they need to send me /start too.\n\n" +
+                                HELP_TEXT
+                        ),
+                    )
+            }
+        }
+    })

@@ -17,7 +17,7 @@ class CurrencyCommand(
             context.chatId,
             "Currency updated:\n\n" +
                 "This group's default currency is now $code — new expenses use $code unless you set a " +
-                "different currency inline, e.g. /split 90 USD dinner @bob.",
+                "different currency inline, e.g. <code>/split 90 USD dinner @bob</code>.",
         )
     }
 }

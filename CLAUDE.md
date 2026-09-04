@@ -10,6 +10,10 @@ split/
 └── <name>/    # other worktrees, siblings of main/
 ```
 
-Create new worktrees as siblings at this level (`git worktree add ../<name> <branch>` from inside `main/`), not nested inside another worktree.
+Base directory: `~/workspace/split`. Create every worktree as a direct child of it, a sibling of `main/`:
 
-Note: Claude Code's `EnterWorktree` tool does not yet support this layout — it creates `.claude/worktrees/<name>/` nested inside whichever worktree it's invoked from (e.g. `split/main/.claude/worktrees/<name>/`) rather than a hub-level sibling. This is a known gap, not a misconfiguration.
+    git worktree add ~/workspace/split/<name> <branch>
+
+Never nest a worktree inside another worktree.
+
+Note: Claude Code's `EnterWorktree` tool does not yet support this layout — it creates `.claude/worktrees/<name>/` nested inside whichever worktree it's invoked from, rather than a hub-level sibling. This is a known gap, not a misconfiguration; use the command above directly instead of relying on `EnterWorktree` when this layout matters.

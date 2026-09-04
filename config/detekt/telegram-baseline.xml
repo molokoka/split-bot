@@ -1,0 +1,171 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:CommandParsing.kt$fun parseSplitArgs( args: String, defaultCurrency: String, ): PartialSplitArgs</ID>
+    <ID>CyclomaticComplexMethod:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$suspend fun handle(context: CallbackContext)</ID>
+    <ID>LongMethod:BotApplication.kt$suspend fun main()</ID>
+    <ID>LongMethod:CommandParsing.kt$fun parseSplitArgs( args: String, defaultCurrency: String, ): PartialSplitArgs</ID>
+    <ID>LongMethod:SplitFlowReplyHandler.kt$SplitFlowReplyHandler$suspend fun handle(context: ReplyContext)</ID>
+    <ID>LongParameterList:SplitExpenseCommand.kt$SplitExpenseCommand$( private val platformDirectory: PlatformDirectory, private val groupRepository: GroupRepository, private val memberRepository: MemberRepository, private val identityResolver: IdentityResolver, private val telegramApi: TelegramApi, private val splitStateStore: SplitStateStore, private val flowStarter: SplitFlowStarter, )</ID>
+    <ID>LongParameterList:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$( private val splitStateStore: SplitStateStore, private val memberRepository: MemberRepository, private val expenseRepository: ExpenseRepository, private val platformDirectory: PlatformDirectory, private val telegramApi: TelegramApi, private val idGenerator: () -&gt; String = { UUID.randomUUID().toString() }, private val clock: Clock = Clock.systemUTC(), )</ID>
+    <ID>LongParameterList:SplitFlowStarter.kt$SplitFlowStarter$( chatId: Long, invokerId: MemberId, groupId: GroupId, description: String, amount: BigDecimal, currency: String, mentionedMemberIds: List&lt;MemberId&gt;, exactAmounts: List&lt;BigDecimal&gt;, )</ID>
+    <ID>LongParameterList:SplitFlowStarter.kt$SplitFlowStarter$( chatId: Long, invokerId: MemberId, groupId: GroupId, description: String, amount: BigDecimal, currency: String, mentionedMemberIds: List&lt;MemberId&gt;, exactAmounts: List&lt;BigDecimal&gt;?, splitTypeHint: SplitType?, )</ID>
+    <ID>LongParameterList:SplitFlowStarter.kt$SplitFlowStarter$( chatId: Long, invokerId: MemberId, groupId: GroupId, description: String, amount: BigDecimal, currency: String, participantIds: List&lt;MemberId&gt;, )</ID>
+    <ID>LongParameterList:SplitFlowStarter.kt$SplitFlowStarter$( groupId: GroupId, description: String, amount: BigDecimal, currency: String, invokerId: MemberId, splitType: SplitType, shares: List&lt;ExpenseShare&gt;, )</ID>
+    <ID>LongParameterList:SplitFlowStarter.kt$SplitFlowStarter$( private val splitStateStore: SplitStateStore, private val memberRepository: MemberRepository, private val platformDirectory: PlatformDirectory, private val expenseRepository: ExpenseRepository, private val telegramApi: TelegramApi, private val idGenerator: () -&gt; String = { UUID.randomUUID().toString() }, private val clock: Clock = Clock.systemUTC(), )</ID>
+    <ID>MagicNumber:ExpensesCommand.kt$ExpensesCommand$10</ID>
+    <ID>MagicNumber:HistoryCommand.kt$HistoryCommand$20</ID>
+    <ID>MagicNumber:HttpTelegramApi.kt$HttpTelegramApi$1000L</ID>
+    <ID>MagicNumber:HttpTelegramApi.kt$HttpTelegramApi$10_000</ID>
+    <ID>MagicNumber:HttpTelegramApi.kt$HttpTelegramApi$30_000</ID>
+    <ID>MagicNumber:MessageFormatting.kt$10</ID>
+    <ID>MagicNumber:MessageFormatting.kt$8</ID>
+    <ID>MagicNumber:SettlementsCommand.kt$SettlementsCommand$10</ID>
+    <ID>MatchingDeclarationName:BotApplication.kt$PollLoop</ID>
+    <ID>MaxLineLength:BalanceCommandSpec.kt$BalanceCommandSpec$shares = listOf(ExpenseShare(aliceId, BigDecimal("10.00")), ExpenseShare(bobId, BigDecimal("10.00")))</ID>
+    <ID>MaxLineLength:BalanceCommandSpec.kt$BalanceCommandSpec$shares = listOf(ExpenseShare(aliceId, BigDecimal("30.00")), ExpenseShare(bobId, BigDecimal("30.00")))</ID>
+    <ID>MaxLineLength:BotApplication.kt$"expenses" to ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)::handle</ID>
+    <ID>MaxLineLength:BotApplication.kt$val flowStarter = SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)</ID>
+    <ID>MaxLineLength:BotApplication.kt$val splitDraftReplyHandler = SplitDraftReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi, flowStarter)</ID>
+    <ID>MaxLineLength:CommandParsing.kt$PartialSplitArgs(splitTypeHint, amount, afterAmountParts[0], afterAmountParts[1].ifBlank { null }, mentionUsernames, exactAmounts)</ID>
+    <ID>MaxLineLength:CommandParsing.kt$PartialSplitArgs(splitTypeHint, amount, defaultCurrency, afterAmount.ifBlank { null }, mentionUsernames, exactAmounts)</ID>
+    <ID>MaxLineLength:CommandParsing.kt$throw IllegalArgumentException("You said &lt;code&gt;equal&lt;/code&gt; but gave specific amounts — did you mean &lt;code&gt;exact&lt;/code&gt;?")</ID>
+    <ID>MaxLineLength:CommandParsingSpec.kt$CommandParsingSpec$shouldThrow&lt;IllegalArgumentException&gt; { parseSplitArgs("90 dinner @alice 0 @bobby 90", defaultCurrency = "USD") }</ID>
+    <ID>MaxLineLength:CommandParsingSpec.kt$CommandParsingSpec$shouldThrow&lt;IllegalArgumentException&gt; { parseSplitArgs("90 dinner @alice 50 @bobby", defaultCurrency = "USD") }</ID>
+    <ID>MaxLineLength:CommandParsingSpec.kt$CommandParsingSpec$shouldThrow&lt;IllegalArgumentException&gt; { parseSplitArgs("equal 90 dinner @alice 50 @bobby 40", defaultCurrency = "USD") }</ID>
+    <ID>MaxLineLength:CommandRouterSpec.kt$CommandRouterSpec$val resolver = IdentityResolver(platformDirectory, ExposedMemberRepository(db), ExposedGroupRepository(db))</ID>
+    <ID>MaxLineLength:CommandRouterSpec.kt$CommandRouterSpec$val router = CommandRouter(aResolver(db), emptyMap(), replyHandler = { replies += it }, isTrackedReply = { _, _ -&gt; true })</ID>
+    <ID>MaxLineLength:CommandRouterSpec.kt$CommandRouterSpec$val router = CommandRouter(aResolver(db), mapOf("add" to { context: CommandContext -&gt; addInvocations += context }))</ID>
+    <ID>MaxLineLength:CommandRouterSpec.kt$CommandRouterSpec$val router = CommandRouter(aResolver(db), mapOf("help" to { context: CommandContext -&gt; helpInvocations += context }))</ID>
+    <ID>MaxLineLength:CurrencyCommandSpec.kt$CurrencyCommandSpec$telegramApi.sentMessages shouldBe listOf(-100L to "Usage: /currency &lt;code&gt;currency&lt;/code&gt;, e.g. /currency EUR")</ID>
+    <ID>MaxLineLength:CurrencyCommandSpec.kt$CurrencyCommandSpec$val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)</ID>
+    <ID>MaxLineLength:DeleteExpenseCommand.kt$DeleteExpenseCommand$"Expense deleted:\n\n\"${escapeHtml(expense.description)}\" (${formatAmount(expense.amount, expense.currency)})."</ID>
+    <ID>MaxLineLength:DeleteExpenseCommand.kt$DeleteExpenseCommand$telegramApi.sendMessage(context.chatId, "No active expense found matching \"${escapeHtml(idPrefix)}\" — check /expenses.")</ID>
+    <ID>MaxLineLength:DeleteExpenseCommandSpec.kt$DeleteExpenseCommandSpec$telegramApi.chatAdministrators = listOf(TgChatMember(status = "administrator", user = TgUser(id = 2, firstName = "Bob")))</ID>
+    <ID>MaxLineLength:DeleteExpenseCommandSpec.kt$DeleteExpenseCommandSpec$telegramApi.sentMessages shouldBe listOf(-100L to "No active expense found matching \"zzzzzzzz\" — check /expenses.")</ID>
+    <ID>MaxLineLength:DeleteExpenseCommandSpec.kt$DeleteExpenseCommandSpec$telegramApi.sentMessages shouldBe listOf(-100L to "Only the payer or a group admin can delete this expense.")</ID>
+    <ID>MaxLineLength:DeleteExpenseCommandSpec.kt$DeleteExpenseCommandSpec$val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)</ID>
+    <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$"lists active expenses oldest first, capped at the 10 most recent, naming who paid and who participated by @username"</ID>
+    <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$-100L to InputRichMessage(blocks = listOf(RichBlockParagraph("No expenses yet — use /split to log one.")))</ID>
+    <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$RichBlockTableCell("dinner\n20.00 USD · paid by @bobby\nnewer123 · 2026-08-28")</ID>
+    <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$RichBlockTableCell("equally:\n@alice 10.00 USD\n@bobby 10.00 USD")</ID>
+    <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$RichBlockTableCell("lunch\n10.00 USD · paid by @alice\nolder123 · 2026-08-27")</ID>
+    <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$shares = listOf(ExpenseShare(aliceId, BigDecimal("10.00")), ExpenseShare(bobbyId, BigDecimal("10.00")))</ID>
+    <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$shares = listOf(ExpenseShare(aliceId, BigDecimal("30.00")), ExpenseShare(bobbyId, BigDecimal("60.00")))</ID>
+    <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$shares = listOf(ExpenseShare(aliceId, BigDecimal("60.00")), ExpenseShare(bobbyId, BigDecimal("40.00")))</ID>
+    <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$val command = ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)</ID>
+    <ID>MaxLineLength:HelpCommandSpec.kt$HelpCommandSpec$val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)</ID>
+    <ID>MaxLineLength:HistoryCommandSpec.kt$HistoryCommandSpec$InputRichMessage(blocks = listOf(RichBlockParagraph("No history yet — use /split or /settle to get started.")))</ID>
+    <ID>MaxLineLength:HistoryCommandSpec.kt$HistoryCommandSpec$RichBlockTableCell("2026-08-27 · dinner — @alice paid 90.00 USD")</ID>
+    <ID>MaxLineLength:HistoryCommandSpec.kt$HistoryCommandSpec$shares = listOf(ExpenseShare(aliceId, BigDecimal("10.00")), ExpenseShare(bobId, BigDecimal("10.00")))</ID>
+    <ID>MaxLineLength:HistoryCommandSpec.kt$HistoryCommandSpec$shares = listOf(ExpenseShare(aliceId, BigDecimal("45.00")), ExpenseShare(bobId, BigDecimal("45.00")))</ID>
+    <ID>MaxLineLength:HttpTelegramApi.kt$HttpTelegramApi$setBody(SendForceReplyRequest(chatId, text, parseMode = "HTML", replyMarkup = ForceReply(forceReply = true)))</ID>
+    <ID>MaxLineLength:HttpTelegramApiSpec.kt$HttpTelegramApiSpec$"""{"chat_id":-100,"message_id":42,"rich_message":{"blocks":[{"type":"paragraph","text":"Split cancelled."}]}}"""</ID>
+    <ID>MaxLineLength:HttpTelegramApiSpec.kt$HttpTelegramApiSpec$"""{"chat_id":-100,"rich_message":{"blocks":[{"type":"table","cells":[[{"text":"ID","is_header":true}],[{"text":"e1"}]],"""</ID>
+    <ID>MaxLineLength:HttpTelegramApiSpec.kt$HttpTelegramApiSpec$"""{"chat_id":-100,"text":"How much is @bob's share?","parse_mode":"HTML","reply_markup":{"force_reply":true}}"""</ID>
+    <ID>MaxLineLength:HttpTelegramApiSpec.kt$HttpTelegramApiSpec$cells = listOf(listOf(RichBlockTableCell("ID", isHeader = true)), listOf(RichBlockTableCell("e1")))</ID>
+    <ID>MaxLineLength:HttpTelegramApiSpec.kt$HttpTelegramApiSpec$inlineKeyboard = listOf(listOf(InlineKeyboardButton(text = "Confirm", callbackData = "split:confirm")))</ID>
+    <ID>MaxLineLength:HttpTelegramApiSpec.kt$HttpTelegramApiSpec$inlineKeyboard = listOf(listOf(InlineKeyboardButton(text = "Equal", callbackData = "split:mode:equal")))</ID>
+    <ID>MaxLineLength:HttpTelegramApiSpec.kt$HttpTelegramApiSpec$val (httpClient, requests) = clientReturning("""{"ok":true,"result":{"message_id":1,"chat":{"id":-100,"type":"group"}}}""")</ID>
+    <ID>MaxLineLength:HttpTelegramApiSpec.kt$HttpTelegramApiSpec$val (httpClient, requests) = clientReturning("""{"ok":true,"result":{"message_id":55,"chat":{"id":-100,"type":"group"}}}""")</ID>
+    <ID>MaxLineLength:HttpTelegramApiSpec.kt$HttpTelegramApiSpec$val (httpClient, requests) = clientReturning("""{"ok":true,"result":{"message_id":56,"chat":{"id":-100,"type":"group"}}}""")</ID>
+    <ID>MaxLineLength:HttpTelegramApiSpec.kt$HttpTelegramApiSpec$val (httpClient, requests) = clientReturning("""{"ok":true,"result":{"message_id":57,"chat":{"id":-100,"type":"group"}}}""")</ID>
+    <ID>MaxLineLength:MessageFormatting.kt$"${plainName(nameOf.getValue(share.memberId), usernames)} ${formatAmount(share.shareAmount, expense.currency)}"</ID>
+    <ID>MaxLineLength:MessageFormatting.kt$return InputRichMessage(blocks = listOf(RichBlockParagraph("No history yet — use /split or /settle to get started.")))</ID>
+    <ID>MaxLineLength:MessageFormatting.kt$return InputRichMessage(blocks = listOf(RichBlockParagraph("No settlements recorded yet — use /settle to log one.")))</ID>
+    <ID>MaxLineLength:MessageFormatting.kt$return listOf(date, from, to, formatAmount(settlement.amount, settlement.currency)).map { RichBlockTableCell(text = it) }</ID>
+    <ID>MaxLineLength:MessageFormatting.kt$val base = "$payerName paid ${formatAmount(expense.amount, expense.currency)} for &lt;b&gt;${escapeHtml(expense.description)}&lt;/b&gt;"</ID>
+    <ID>MaxLineLength:MessageFormattingSpec.kt$MessageFormattingSpec$"Expense added:\n\n@alice_w paid 90.00 USD for &lt;b&gt;dinner&lt;/b&gt;, split equally: @alice_w (45.00), Bob (45.00)"</ID>
+    <ID>MaxLineLength:MessageFormattingSpec.kt$MessageFormattingSpec$"Expense added:\n\nAlice paid 90.00 USD for &lt;b&gt;dinner&lt;/b&gt;, split by exact amounts: Alice (50.00), Bob (40.00)"</ID>
+    <ID>MaxLineLength:MessageFormattingSpec.kt$MessageFormattingSpec$InputRichMessage(blocks = listOf(RichBlockParagraph("No history yet — use /split or /settle to get started.")))</ID>
+    <ID>MaxLineLength:MessageFormattingSpec.kt$MessageFormattingSpec$InputRichMessage(blocks = listOf(RichBlockParagraph("No settlements recorded yet — use /settle to log one.")))</ID>
+    <ID>MaxLineLength:MessageFormattingSpec.kt$MessageFormattingSpec$RichBlockTableCell("dinner\n90.00 USD · paid by Alice\nabcdef12 · 2026-08-28")</ID>
+    <ID>MaxLineLength:MessageFormattingSpec.kt$MessageFormattingSpec$SettlementHistoryEvent(settlement, mapOf(alice.id to BigDecimal("0.00"), bob.id to BigDecimal("0.00")))</ID>
+    <ID>MaxLineLength:MessageFormattingSpec.kt$MessageFormattingSpec$formatExpenseConfirmation(expense, members) shouldBe "Expense added:\n\nAlice paid 12.00 USD for &lt;b&gt;solo lunch&lt;/b&gt;"</ID>
+    <ID>MaxLineLength:MessageFormattingSpec.kt$MessageFormattingSpec$mapOf(alice.id to BigDecimal("60.00"), bob.id to BigDecimal("-30.00"), carol.id to BigDecimal("-30.00"))</ID>
+    <ID>MaxLineLength:MessageFormattingSpec.kt$MessageFormattingSpec$row.map { it.text } shouldBe listOf("2026-08-27 · coffee — Alice paid 5.00 USD", "Everyone's settled up in USD")</ID>
+    <ID>MaxLineLength:MessageFormattingSpec.kt$MessageFormattingSpec$row.map { it.text } shouldBe listOf("2026-08-28 · @bobby paid Alice 45.00 USD", "@bobby owes Alice 45.00 USD")</ID>
+    <ID>MaxLineLength:MessageFormattingSpec.kt$MessageFormattingSpec$shares = listOf(ExpenseShare(alice.id, BigDecimal("45.00")), ExpenseShare(bob.id, BigDecimal("45.00")))</ID>
+    <ID>MaxLineLength:MessageFormattingSpec.kt$MessageFormattingSpec$shares = listOf(ExpenseShare(alice.id, BigDecimal("50.00")), ExpenseShare(bob.id, BigDecimal("40.00")))</ID>
+    <ID>MaxLineLength:MessageFormattingSpec.kt$MessageFormattingSpec$shares = listOf(ExpenseShare(alice.id, BigDecimal("60.00")), ExpenseShare(bob.id, BigDecimal("30.00")))</ID>
+    <ID>MaxLineLength:MessageFormattingSpec.kt$MessageFormattingSpec$val events = listOf(SettlementHistoryEvent(settlement, mapOf(alice.id to BigDecimal("45.00"), bob.id to BigDecimal("-45.00"))))</ID>
+    <ID>MaxLineLength:MessageFormattingSpec.kt$MessageFormattingSpec$val payments = mapOf("USD" to listOf(DebtPayment(from = MemberId("not-a-member"), to = alice.id, amount = BigDecimal("30.00"))))</ID>
+    <ID>MaxLineLength:MessageFormattingSpec.kt$MessageFormattingSpec$val payments = mapOf("USD" to listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00"))))</ID>
+    <ID>MaxLineLength:PollLoopSpec.kt$PollLoopSpec$val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), ExposedGroupRepository(db))</ID>
+    <ID>MaxLineLength:SettleCommand.kt$SettleCommand$"I don't recognize &lt;code&gt;@${parsed.counterpartyUsername}&lt;/code&gt; yet — ask them to run /start with me first."</ID>
+    <ID>MaxLineLength:SettleCommand.kt$SettleCommand$val counterpartyId = platformDirectory.findMemberByUsername(IdentityResolver.PLATFORM, parsed.counterpartyUsername)</ID>
+    <ID>MaxLineLength:SettleSuggestCommandSpec.kt$SettleSuggestCommandSpec$-100L to "Suggested settlements:\n\n@carol to pay @alice 10.00 USD\n@carol to pay @bob 10.00 USD"</ID>
+    <ID>MaxLineLength:SettleSuggestCommandSpec.kt$SettleSuggestCommandSpec$shares = listOf(ExpenseShare(aliceId, BigDecimal("10.00")), ExpenseShare(bobId, BigDecimal("10.00")))</ID>
+    <ID>MaxLineLength:SettleSuggestCommandSpec.kt$SettleSuggestCommandSpec$shares = listOf(ExpenseShare(aliceId, BigDecimal("30.00")), ExpenseShare(bobId, BigDecimal("30.00")))</ID>
+    <ID>MaxLineLength:SettleSuggestCommandSpec.kt$SettleSuggestCommandSpec$telegramApi.sentMessages shouldBe listOf(-100L to "Suggested settlements:\n\n@bob to pay @alice 30.00 USD")</ID>
+    <ID>MaxLineLength:SettlementsCommandSpec.kt$SettlementsCommandSpec$InputRichMessage(blocks = listOf(RichBlockParagraph("No settlements recorded yet — use /settle to log one.")))</ID>
+    <ID>MaxLineLength:SettlementsCommandSpec.kt$SettlementsCommandSpec$val command = SettlementsCommand(groupRepository, memberRepository, settlementRepository, platformDirectory, telegramApi)</ID>
+    <ID>MaxLineLength:SplitDraftReplyHandler.kt$SplitDraftReplyHandler$"That doesn't look like an amount — reply with a positive number with at most 2 decimal places, optionally followed by a currency, e.g. 42.50 or 42.50 EUR."</ID>
+    <ID>MaxLineLength:SplitDraftReplyHandlerSpec.kt$SplitDraftReplyHandlerSpec$val flowStarter = SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)</ID>
+    <ID>MaxLineLength:SplitDraftReplyHandlerSpec.kt$SplitDraftReplyHandlerSpec$val handler = SplitDraftReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi, flowStarter)</ID>
+    <ID>MaxLineLength:SplitExpenseCommandSpec.kt$SplitExpenseCommandSpec$telegramApi.sentForceReplyPrompts.single().second shouldBe splitDraftPromptText(SplitDraftField.DESCRIPTION, "USD")</ID>
+    <ID>MaxLineLength:SplitExpenseCommandSpec.kt$SplitExpenseCommandSpec$val bobbyId = resolver.resolveMember("2", "bobby", "Bob") // Bob has run a command before, so @bobby resolves</ID>
+    <ID>MaxLineLength:SplitExpenseCommandSpec.kt$SplitExpenseCommandSpec$val flowStarter = SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)</ID>
+    <ID>MaxLineLength:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$context.data == SPLIT_CONFIRM_DATA &amp;&amp; flow.stage == SplitFlowStage.ENTERING_AMOUNTS -&gt; confirm(context, flow)</ID>
+    <ID>MaxLineLength:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$context.data == SPLIT_MODE_EQUAL_DATA &amp;&amp; flow.stage == SplitFlowStage.CHOOSING_MODE -&gt; chooseEqual(context, flow)</ID>
+    <ID>MaxLineLength:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$context.data == SPLIT_MODE_EXACT_DATA &amp;&amp; flow.stage == SplitFlowStage.CHOOSING_MODE -&gt; chooseExact(context, flow)</ID>
+    <ID>MaxLineLength:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$context.data.startsWith(SPLIT_PICK_PREFIX) &amp;&amp; flow.stage == SplitFlowStage.ENTERING_AMOUNTS -&gt; pickParticipant(context, flow)</ID>
+    <ID>MaxLineLength:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$else -&gt; telegramApi.answerCallbackQuery(context.callbackQueryId, "This split is no longer active.", showAlert = true)</ID>
+    <ID>MaxLineLength:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$flow.copy(pendingParticipantId = memberId, pendingPromptMessageId = promptMessageId, pendingIsAutoAdvance = false)</ID>
+    <ID>MaxLineLength:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$private suspend</ID>
+    <ID>MaxLineLength:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$telegramApi.answerCallbackQuery(context.callbackQueryId, "This split is no longer active.", showAlert = true)</ID>
+    <ID>MaxLineLength:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$telegramApi.answerCallbackQuery(context.callbackQueryId, e.message ?: "Amounts don't add up yet.", showAlert = true)</ID>
+    <ID>MaxLineLength:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$telegramApi.editMessageText(context.chatId, flow.promptMessageId, formatExpenseConfirmation(expense, members, usernames))</ID>
+    <ID>MaxLineLength:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$val promptMessageId = sendParticipantAmountPrompt(context.chatId, firstParticipantId, members, usernames, telegramApi)</ID>
+    <ID>MaxLineLength:SplitFlowFormatting.kt$SplitDraftField.AMOUNT -&gt; "How much, and in what currency? Reply with an amount, e.g. 90 or 90 EUR (defaults to $currency)."</ID>
+    <ID>MaxLineLength:SplitFlowFormattingSpec.kt$SplitFlowFormattingSpec$listOf(RichBlockTableCell("Person", isHeader = true), RichBlockTableCell("Amount", isHeader = true))</ID>
+    <ID>MaxLineLength:SplitFlowFormattingSpec.kt$SplitFlowFormattingSpec$splitDraftPromptText(SplitDraftField.PARTICIPANTS, "USD", knownUsernames = listOf("julia", "marco"))</ID>
+    <ID>MaxLineLength:SplitFlowReplyHandler.kt$SplitFlowReplyHandler$"That doesn't look like an amount — reply with a positive number with at most 2 decimal places, e.g. 42.50."</ID>
+    <ID>MaxLineLength:SplitFlowReplyHandler.kt$SplitFlowReplyHandler$val promptMessageId = sendParticipantAmountPrompt(context.chatId, nextParticipantId, members, usernames, telegramApi)</ID>
+    <ID>MaxLineLength:SplitFlowReplyHandlerSpec.kt$SplitFlowReplyHandlerSpec$"That doesn't look like an amount — reply with a positive number with at most 2 decimal places, e.g. 42.50."</ID>
+    <ID>MaxLineLength:SplitFlowReplyHandlerSpec.kt$SplitFlowReplyHandlerSpec$"a valid amount reply fills in the pending participant, edits both messages, and auto-advances to the next unfilled one"</ID>
+    <ID>MaxLineLength:SplitFlowSpec.kt$SplitFlowSpec$callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq1", firstPromptMessageId, SPLIT_MODE_EQUAL_DATA))</ID>
+    <ID>MaxLineLength:SplitFlowSpec.kt$SplitFlowSpec$callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq1", promptMessageId, SPLIT_MODE_EQUAL_DATA))</ID>
+    <ID>MaxLineLength:SplitFlowSpec.kt$SplitFlowSpec$callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq1", promptMessageId, SPLIT_MODE_EXACT_DATA))</ID>
+    <ID>MaxLineLength:SplitFlowSpec.kt$SplitFlowSpec$callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq2", latestActionsMessageId, SPLIT_CONFIRM_DATA))</ID>
+    <ID>MaxLineLength:SplitFlowSpec.kt$SplitFlowSpec$callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq2", promptMessageId, splitPickData(0)))</ID>
+    <ID>MaxLineLength:SplitFlowSpec.kt$SplitFlowSpec$callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq3", promptMessageId, splitPickData(1)))</ID>
+    <ID>MaxLineLength:SplitFlowSpec.kt$SplitFlowSpec$callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq4", latestActionsMessageId, SPLIT_CONFIRM_DATA))</ID>
+    <ID>MaxLineLength:SplitFlowSpec.kt$SplitFlowSpec$callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq4", promptMessageId, splitPickData(0)))</ID>
+    <ID>MaxLineLength:SplitFlowSpec.kt$SplitFlowSpec$val flowStarter = SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)</ID>
+    <ID>MaxLineLength:SplitFlowSpec.kt$SplitFlowSpec$val replyHandler = SplitFlowReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi)</ID>
+    <ID>MaxLineLength:SplitFlowStarter.kt$SplitFlowStarter$createExact(chatId, invokerId, groupId, description, scaledAmount, currency, mentionedMemberIds, scaledExactAmounts)</ID>
+    <ID>MaxLineLength:TelegramDtosSpec.kt$TelegramDtosSpec$message = TgMessage(messageId = 1, from = null, chat = TgChat(id = 5, type = "private"), text = null)</ID>
+    <ID>MaxLineLength:TelegramDtosSpec.kt$TelegramDtosSpec$val body = """{"ok": true, "result": [{"status": "administrator", "user": {"id": 111, "first_name": "Bob"}}]}"""</ID>
+    <ID>ReturnCount:CommandParsing.kt$fun parseSplitArgs( args: String, defaultCurrency: String, ): PartialSplitArgs</ID>
+    <ID>ReturnCount:CommandRouter.kt$CommandRouter$private suspend fun handleCallbackQuery(callbackQuery: TgCallbackQuery)</ID>
+    <ID>ReturnCount:CommandRouter.kt$CommandRouter$private suspend fun handleReply( message: TgMessage, from: TgUser, text: String, )</ID>
+    <ID>ReturnCount:CommandRouter.kt$CommandRouter$suspend fun handleUpdate(update: TgUpdate)</ID>
+    <ID>ReturnCount:DeleteExpenseCommand.kt$DeleteExpenseCommand$suspend fun handle(context: CommandContext)</ID>
+    <ID>ReturnCount:SettleCommand.kt$SettleCommand$suspend fun handle(context: CommandContext)</ID>
+    <ID>ReturnCount:SplitDraftReplyHandler.kt$SplitDraftReplyHandler$suspend fun handle(context: ReplyContext)</ID>
+    <ID>ReturnCount:SplitExpenseCommand.kt$SplitExpenseCommand$suspend fun handle(context: CommandContext)</ID>
+    <ID>ReturnCount:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$suspend fun handle(context: CallbackContext)</ID>
+    <ID>ReturnCount:SplitFlowReplyHandler.kt$SplitFlowReplyHandler$suspend fun handle(context: ReplyContext)</ID>
+    <ID>TooGenericExceptionCaught:BotApplication.kt$PollLoop$e: Exception</ID>
+    <ID>TooGenericExceptionThrown:PollLoopSpec.kt$PollLoopSpec$throw RuntimeException("simulated failure")</ID>
+    <ID>TooManyFunctions:MessageFormatting.kt$split.telegram.MessageFormatting.kt</ID>
+    <ID>UseRequire:CommandParsing.kt$throw IllegalArgumentException("You said &lt;code&gt;equal&lt;/code&gt; but gave specific amounts — did you mean &lt;code&gt;exact&lt;/code&gt;?")</ID>
+    <ID>WildcardImport:HttpTelegramApi.kt$import io.ktor.client.*</ID>
+    <ID>WildcardImport:HttpTelegramApi.kt$import io.ktor.client.call.*</ID>
+    <ID>WildcardImport:HttpTelegramApi.kt$import io.ktor.client.engine.cio.*</ID>
+    <ID>WildcardImport:HttpTelegramApi.kt$import io.ktor.client.plugins.*</ID>
+    <ID>WildcardImport:HttpTelegramApi.kt$import io.ktor.client.plugins.contentnegotiation.*</ID>
+    <ID>WildcardImport:HttpTelegramApi.kt$import io.ktor.client.request.*</ID>
+    <ID>WildcardImport:HttpTelegramApi.kt$import io.ktor.http.*</ID>
+    <ID>WildcardImport:HttpTelegramApi.kt$import io.ktor.serialization.kotlinx.json.*</ID>
+    <ID>WildcardImport:HttpTelegramApiSpec.kt$import io.ktor.client.*</ID>
+    <ID>WildcardImport:HttpTelegramApiSpec.kt$import io.ktor.client.engine.mock.*</ID>
+    <ID>WildcardImport:HttpTelegramApiSpec.kt$import io.ktor.client.plugins.contentnegotiation.*</ID>
+    <ID>WildcardImport:HttpTelegramApiSpec.kt$import io.ktor.client.request.*</ID>
+    <ID>WildcardImport:HttpTelegramApiSpec.kt$import io.ktor.http.*</ID>
+    <ID>WildcardImport:HttpTelegramApiSpec.kt$import io.ktor.serialization.kotlinx.json.*</ID>
+    <ID>WildcardImport:HttpTelegramApiSpec.kt$import io.ktor.utils.io.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

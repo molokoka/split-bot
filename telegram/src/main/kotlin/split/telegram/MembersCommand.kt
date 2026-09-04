@@ -17,7 +17,10 @@ class MembersCommand(
     }
 }
 
-internal fun formatMembers(members: List<Member>, usernames: Map<MemberId, String> = emptyMap()): String {
+internal fun formatMembers(
+    members: List<Member>,
+    usernames: Map<MemberId, String> = emptyMap(),
+): String {
     if (members.isEmpty()) return "No members yet."
     return "Members:\n\n" + members.joinToString("\n") { "• ${mentionName(it, usernames)}" }
 }
