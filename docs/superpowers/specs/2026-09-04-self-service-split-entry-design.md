@@ -159,25 +159,50 @@ those yet (only the invoker picks the mode).
   are the only two things that delete a `split_flow_state` row); any participant can `pick`
   their own row (via the table or via `/expenses pending`) to correct it. No auto-adjustment.
 - `/expenses pending` with nothing open → a plain "No pending splits." message.
+- Tapping "Enter your amount" against a flow that was `Confirm`ed or `Cancel`led between the list
+  being sent and the tap (someone else closed it out in the meantime) → `find` returns nothing,
+  so this hits the same "This split is no longer active" alert every other stale-flow tap already
+  falls back to (`SplitFlowCallbackHandler.handle`'s `flow == null` branch). No new message needed,
+  but it's the one genuinely new race this feature introduces — worth its own test rather than
+  assuming the existing fallback covers it.
 - No expiry/TTL on `split_flow_state` rows in this iteration — `Cancel` (invoker-only, unchanged)
   is the only way to close one out early. YAGNI: add expiry only if abandoned flows turn out to
   be an actual problem.
 
 ## Testing
 
-Same `FakeTelegramApi` + Kotest conventions as the rest of the suite, plus an
-`ExposedSplitFlowStateRepositorySpec` against a real temp-file SQLite DB (matching
-`ExposedExpenseRepositorySpec`'s style). Cases to add/update beyond what `SplitFlowSpec` already
-covers:
+Same `FakeTelegramApi` + Kotest `StringSpec` conventions as the rest of the suite — narrative test
+names plus self-descriptive fixture/helper extension functions, the same "read as the spec" style
+`SplitFlowSpec.kt` already uses (`FlowFixture`, `aliceAndBobbyInGroup()`, `tapExact(...)`, etc.).
+The two riskiest areas here — flows no longer being isolated to one-per-chat, and the new
+`/expenses pending` entry point touching flows started by other tests' setup — are exactly where
+that style earns its keep: each concurrency case should read as a sentence describing the
+interleaving, not as a block of raw handler calls the reader has to replay by hand. Where several
+cases only differ by which action races which (reply vs. pick vs. confirm vs. cancel, across two
+flows), prefer Kotest's table-driven `withData`/`forAll` over copy-pasted near-identical `"..."
+{ }` blocks, matching the existing "extract self-descriptive fixtures so specs read as the spec"
+practice from PR #1's review pass.
+
+New `ExposedSplitFlowStateRepositorySpec` against a real temp-file SQLite DB (matching
+`ExposedExpenseRepositorySpec`'s style). Cases to add/update in `SplitFlowSpec`/a new
+`SplitFlowConcurrencySpec` beyond what's already covered:
 
 - A named participant (not the invoker) replies to their own auto-advanced prompt — accepted.
 - A named participant `pick`s their own row out of order, before or after auto-advance reaches
   them — accepted; picking *someone else's* row is still invoker-only.
-- Two concurrent flows in the same chat: replies/picks/cancel on one don't affect the other.
+- **Two flows open in the same chat at once, driven concretely**: start flow A (dinner), start
+  flow B (drinks) before A is confirmed; reply/pick/confirm/cancel on A and confirm B never
+  touches A's row, A's participants' replies never get matched against B's prompts, and vice
+  versa. Confirming or cancelling one leaves the other's `pendingParticipantId`/amounts untouched.
+- A reply whose `reply_to_message_id` matches a *different* flow's prompt than the one currently
+  "pending" in that same flow (e.g. a stale client retry) is not matched — `find` keys off the
+  specific message id, not "whatever this chat's most recent flow is."
 - `/expenses pending` lists only `ENTERING_AMOUNTS` flows for the group, with correct
-  per-participant status.
+  per-participant status, and drops a flow from the list the moment it's confirmed or cancelled.
 - Tapping "Enter your amount" from the list for a participant with no amount yet vs. one
   correcting an already-submitted amount.
+- Tapping "Enter your amount" for a flow already closed by someone else → "no longer active"
+  alert, no crash, no new row resurrected.
 - Restart mid-flow: reload `split_flow_state` from the DB, replies against the reloaded flow
   continue to work.
 
