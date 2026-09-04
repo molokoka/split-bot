@@ -11,6 +11,56 @@ import java.math.BigDecimal
 class SplitFlowSpec :
     StringSpec({
 
+        "the full equal-split flow: choose Equal, expense created immediately" {
+            withTestDatabase { db ->
+                val platformDirectory = ExposedPlatformDirectory(db)
+                val groupRepository = ExposedGroupRepository(db)
+                val memberRepository = ExposedMemberRepository(db)
+                val expenseRepository = ExposedExpenseRepository(db)
+                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+
+                val aliceId = resolver.resolveMember("1", "alice", "Alice")
+                val groupId = resolver.resolveGroup("-100")
+                resolver.ensureGroupMembership(groupId, aliceId)
+                val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
+
+                val telegramApi = FakeTelegramApi()
+                val splitStateStore = SplitStateStore()
+                val flowStarter = SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
+                val splitCommand =
+                    SplitExpenseCommand(
+                        platformDirectory,
+                        groupRepository,
+                        memberRepository,
+                        resolver,
+                        telegramApi,
+                        splitStateStore,
+                        flowStarter,
+                    )
+                val callbackHandler =
+                    SplitFlowCallbackHandler(
+                        splitStateStore,
+                        memberRepository,
+                        expenseRepository,
+                        platformDirectory,
+                        telegramApi,
+                    )
+
+                splitCommand.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner @bobby"))
+                val promptMessageId = (splitStateStore.get(-100) as PendingSplit).promptMessageId
+
+                callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq1", promptMessageId, SPLIT_MODE_EQUAL_DATA))
+
+                val expense = expenseRepository.listActive(groupId).single()
+                expense.shares.associate { it.memberId to it.shareAmount } shouldBe
+                    mapOf(
+                        aliceId to BigDecimal("45.00"),
+                        bobbyId to BigDecimal("45.00"),
+                    )
+                splitStateStore.get(-100) shouldBe null
+            }
+        }
+
         "the full exact-split flow: choose Exact, enter both amounts, confirm" {
             withTestDatabase { db ->
                 val platformDirectory = ExposedPlatformDirectory(db)
@@ -148,56 +198,6 @@ class SplitFlowSpec :
                         aliceId to BigDecimal("50.00"),
                         bobId to BigDecimal("40.00"),
                     )
-            }
-        }
-
-        "the full equal-split flow: choose Equal, expense created immediately" {
-            withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val groupRepository = ExposedGroupRepository(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val expenseRepository = ExposedExpenseRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
-
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100")
-                resolver.ensureGroupMembership(groupId, aliceId)
-                val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
-
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
-                val flowStarter = SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-                val splitCommand =
-                    SplitExpenseCommand(
-                        platformDirectory,
-                        groupRepository,
-                        memberRepository,
-                        resolver,
-                        telegramApi,
-                        splitStateStore,
-                        flowStarter,
-                    )
-                val callbackHandler =
-                    SplitFlowCallbackHandler(
-                        splitStateStore,
-                        memberRepository,
-                        expenseRepository,
-                        platformDirectory,
-                        telegramApi,
-                    )
-
-                splitCommand.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner @bobby"))
-                val promptMessageId = (splitStateStore.get(-100) as PendingSplit).promptMessageId
-
-                callbackHandler.handle(CallbackContext(-100, aliceId, groupId, "cbq1", promptMessageId, SPLIT_MODE_EQUAL_DATA))
-
-                val expense = expenseRepository.listActive(groupId).single()
-                expense.shares.associate { it.memberId to it.shareAmount } shouldBe
-                    mapOf(
-                        aliceId to BigDecimal("45.00"),
-                        bobbyId to BigDecimal("45.00"),
-                    )
-                splitStateStore.get(-100) shouldBe null
             }
         }
 

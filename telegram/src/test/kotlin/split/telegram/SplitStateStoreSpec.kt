@@ -57,24 +57,6 @@ class SplitStateStoreSpec :
             store.get(-100) shouldBe draft
         }
 
-        "clearing a chat's state removes it" {
-            val store = SplitStateStore()
-            store.set(-100, aFlow())
-
-            store.clear(-100)
-
-            store.get(-100) shouldBe null
-        }
-
-        "states for different chats don't interfere" {
-            val store = SplitStateStore()
-            store.set(-100, aFlow(promptMessageId = 1))
-            store.set(-200, aFlow(promptMessageId = 2))
-
-            (store.get(-100) as PendingSplit).promptMessageId shouldBe 1
-            (store.get(-200) as PendingSplit).promptMessageId shouldBe 2
-        }
-
         "setting a new state for a chat replaces the old one" {
             val store = SplitStateStore()
             store.set(-100, aFlow(promptMessageId = 1))
@@ -91,5 +73,23 @@ class SplitStateStoreSpec :
             store.set(-100, aFlow())
 
             store.get(-100) shouldBe aFlow()
+        }
+
+        "clearing a chat's state removes it" {
+            val store = SplitStateStore()
+            store.set(-100, aFlow())
+
+            store.clear(-100)
+
+            store.get(-100) shouldBe null
+        }
+
+        "states for different chats don't interfere" {
+            val store = SplitStateStore()
+            store.set(-100, aFlow(promptMessageId = 1))
+            store.set(-200, aFlow(promptMessageId = 2))
+
+            (store.get(-100) as PendingSplit).promptMessageId shouldBe 1
+            (store.get(-200) as PendingSplit).promptMessageId shouldBe 2
         }
     })
