@@ -1,0 +1,8 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>LongParameterList:Settling.kt$( id: SettlementId, groupId: GroupId, currency: String, from: MemberId, to: MemberId, amount: BigDecimal, createdBy: MemberId, createdAt: Instant, )</ID>
+    <ID>MatchingDeclarationName:DebtSimplification.kt$DebtPayment</ID>
+  </CurrentIssues>
+</SmellBaseline>

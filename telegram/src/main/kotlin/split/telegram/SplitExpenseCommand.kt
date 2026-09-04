@@ -1,72 +1,99 @@
 package split.telegram
 
-import split.core.Expense
-import split.core.ExpenseId
-import split.core.ExpenseRepository
 import split.core.GroupRepository
+import split.core.MemberId
 import split.core.MemberRepository
 import split.core.PlatformDirectory
-import split.core.SplitType
-import split.core.resolveEqualSplit
-import java.time.Clock
-import java.time.Instant
-import java.util.UUID
 
 class SplitExpenseCommand(
     private val platformDirectory: PlatformDirectory,
     private val groupRepository: GroupRepository,
     private val memberRepository: MemberRepository,
-    private val expenseRepository: ExpenseRepository,
     private val identityResolver: IdentityResolver,
     private val telegramApi: TelegramApi,
-    private val idGenerator: () -> String = { UUID.randomUUID().toString() },
-    private val clock: Clock = Clock.systemUTC(),
+    private val splitStateStore: SplitStateStore,
+    private val flowStarter: SplitFlowStarter,
 ) {
     suspend fun handle(context: CommandContext) {
         val group = groupRepository.find(context.groupId) ?: error("Group ${context.groupId} not found")
 
-        val parsed = try {
-            parseSplitArgs(context.args, group.defaultCurrency)
-        } catch (e: IllegalArgumentException) {
-            telegramApi.sendMessage(context.chatId, e.message ?: "Invalid /split usage")
-            return
-        }
+        val parsed =
+            try {
+                parseSplitArgs(context.args, group.defaultCurrency)
+            } catch (e: IllegalArgumentException) {
+                telegramApi.sendMessage(context.chatId, e.message ?: "Invalid /split usage")
+                return
+            }
 
-        val participantIds = mutableListOf(context.memberId)
+        val mentionedMemberIds = mutableListOf<MemberId>()
         for (username in parsed.mentionUsernames) {
             val participantId = platformDirectory.findMemberByUsername(IdentityResolver.PLATFORM, username)
             if (participantId == null) {
                 telegramApi.sendMessage(
                     context.chatId,
-                    "I don't recognize @$username yet — ask them to run /start with me first.",
+                    "I don't recognize <code>@$username</code> yet — ask them to run /start with me first.",
                 )
                 return
             }
-            participantIds += participantId
+            mentionedMemberIds += participantId
         }
-
-        val uniqueParticipantIds = participantIds.distinct()
-        for (participantId in uniqueParticipantIds) {
+        for (participantId in (listOf(context.memberId) + mentionedMemberIds).distinct()) {
             identityResolver.ensureGroupMembership(context.groupId, participantId)
         }
 
-        val shares = resolveEqualSplit(parsed.amount, context.memberId, uniqueParticipantIds)
-        val expense = Expense(
-            id = ExpenseId(idGenerator()),
+        if (parsed.description == null || parsed.amount == null || parsed.mentionUsernames.isEmpty()) {
+            startDraft(context, parsed)
+            return
+        }
+
+        flowStarter.start(
+            chatId = context.chatId,
+            invokerId = context.memberId,
             groupId = context.groupId,
-            currency = parsed.currency,
             description = parsed.description,
             amount = parsed.amount,
-            payerId = context.memberId,
-            splitType = SplitType.EQUAL,
-            createdBy = context.memberId,
-            createdAt = Instant.now(clock),
-            shares = shares,
+            currency = parsed.currency,
+            mentionedMemberIds = mentionedMemberIds,
+            exactAmounts = parsed.exactAmounts,
+            splitTypeHint = parsed.splitTypeHint,
         )
-        expenseRepository.create(expense)
+    }
 
-        val members = memberRepository.findByGroup(context.groupId)
-        val usernames = platformDirectory.findUsernames(IdentityResolver.PLATFORM, members.map { it.id })
-        telegramApi.sendMessage(context.chatId, formatExpenseConfirmation(expense, members, usernames))
+    private suspend fun startDraft(
+        context: CommandContext,
+        parsed: PartialSplitArgs,
+    ) {
+        val awaiting =
+            when {
+                parsed.description == null -> SplitDraftField.DESCRIPTION
+                parsed.amount == null -> SplitDraftField.AMOUNT
+                else -> SplitDraftField.PARTICIPANTS
+            }
+        val knownUsernames =
+            if (awaiting == SplitDraftField.PARTICIPANTS) {
+                knownUsernamesExcluding(memberRepository, platformDirectory, context.groupId, context.memberId)
+            } else {
+                emptyList()
+            }
+        val promptMessageId =
+            telegramApi.sendForceReplyPrompt(
+                context.chatId,
+                splitDraftPromptText(awaiting, parsed.currency, knownUsernames),
+            )
+        splitStateStore.set(
+            context.chatId,
+            PendingSplitDraft(
+                invokerId = context.memberId,
+                groupId = context.groupId,
+                splitTypeHint = parsed.splitTypeHint,
+                description = parsed.description,
+                amount = parsed.amount,
+                currency = parsed.currency,
+                mentionUsernames = parsed.mentionUsernames,
+                exactAmounts = parsed.exactAmounts,
+                awaiting = awaiting,
+                promptMessageId = promptMessageId,
+            ),
+        )
     }
 }

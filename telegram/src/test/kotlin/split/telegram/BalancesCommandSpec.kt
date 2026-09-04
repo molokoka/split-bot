@@ -53,7 +53,14 @@ class BalancesCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, bobId, "2", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(-100L to "Balances:\n\n@bob owes @alice 30.00 USD")
+            telegramApi.sentMessages shouldBe listOf(
+                -100L to
+                    """
+                    Balances:
+
+                    @bob owes @alice 30.00 USD
+                    """.trimIndent(),
+            )
         }
     }
 
@@ -141,10 +148,14 @@ class BalancesCommandSpec : StringSpec({
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
             command.handle(CommandContext(-100, carolId, "3", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(
-                -100L to "Balances:\n\n@carol owes @alice 10.00 USD\n@carol owes @bob 10.00 USD",
-                -100L to "Balances:\n\n@carol owes @alice 10.00 USD\n@carol owes @bob 10.00 USD",
-            )
+            val expected =
+                """
+                Balances:
+
+                @carol owes @alice 10.00 USD
+                @carol owes @bob 10.00 USD
+                """.trimIndent()
+            telegramApi.sentMessages shouldBe listOf(-100L to expected, -100L to expected)
         }
     }
 
@@ -211,7 +222,14 @@ class BalancesCommandSpec : StringSpec({
 
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
-            telegramApi.sentMessages shouldBe listOf(-100L to "Balances:\n\n@bob owes @alice 30.00 USD")
+            telegramApi.sentMessages shouldBe listOf(
+                -100L to
+                    """
+                    Balances:
+
+                    @bob owes @alice 30.00 USD
+                    """.trimIndent(),
+            )
         }
     }
 
@@ -277,7 +295,14 @@ class BalancesCommandSpec : StringSpec({
             command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
             telegramApi.sentMessages shouldBe listOf(
-                -100L to "Balances:\n\n@carol owes @bob 10.00 EUR\n@carol owes @alice 20.00 USD\n@bob owes @alice 10.00 USD",
+                -100L to
+                    """
+                    Balances:
+
+                    @carol owes @bob 10.00 EUR
+                    @carol owes @alice 20.00 USD
+                    @bob owes @alice 10.00 USD
+                    """.trimIndent(),
             )
         }
     }
