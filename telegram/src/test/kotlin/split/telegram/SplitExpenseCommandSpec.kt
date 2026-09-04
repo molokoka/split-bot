@@ -2,49 +2,98 @@ package split.telegram
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import org.jetbrains.exposed.v1.jdbc.Database
+import split.core.GroupId
+import split.core.MemberId
 import split.storage.ExposedExpenseRepository
 import split.storage.ExposedGroupRepository
 import split.storage.ExposedMemberRepository
 import split.storage.ExposedPlatformDirectory
 import java.math.BigDecimal
 
+private const val COMMAND_CHAT_ID = -100L
+
+private class CommandFixture(
+    db: Database,
+) {
+    val platformDirectory = ExposedPlatformDirectory(db)
+    val groupRepository = ExposedGroupRepository(db)
+    val memberRepository = ExposedMemberRepository(db)
+    val expenseRepository = ExposedExpenseRepository(db)
+    val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+    val telegramApi = FakeTelegramApi()
+    val splitStateStore = SplitStateStore()
+    val flowStarter =
+        SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
+    val command =
+        SplitExpenseCommand(
+            platformDirectory,
+            groupRepository,
+            memberRepository,
+            resolver,
+            telegramApi,
+            splitStateStore,
+            flowStarter,
+        )
+}
+
+private suspend fun CommandFixture.aliceAndBobbyMemberOnly(): Triple<MemberId, MemberId, GroupId> {
+    val aliceId = resolver.resolveMember("1", "alice", "Alice")
+    val groupId = resolver.resolveGroup("-100001")
+    resolver.ensureGroupMembership(groupId, aliceId)
+    val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
+    return Triple(aliceId, bobbyId, groupId)
+}
+
+private suspend fun CommandFixture.aliceAndBobbyBothMembers(): Triple<MemberId, MemberId, GroupId> {
+    val aliceId = resolver.resolveMember("1", "alice", "Alice")
+    val groupId = resolver.resolveGroup("-100001")
+    resolver.ensureGroupMembership(groupId, aliceId)
+    val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
+    resolver.ensureGroupMembership(groupId, bobbyId)
+    return Triple(aliceId, bobbyId, groupId)
+}
+
+private suspend fun CommandFixture.aliceOnly(): Pair<MemberId, GroupId> {
+    val aliceId = resolver.resolveMember("1", "alice", "Alice")
+    val groupId = resolver.resolveGroup("-100001")
+    resolver.ensureGroupMembership(groupId, aliceId)
+    return aliceId to groupId
+}
+
+private suspend fun CommandFixture.aliceUnregistered(): Pair<MemberId, GroupId> {
+    val aliceId = resolver.resolveMember("1", "alice", "Alice")
+    val groupId = resolver.resolveGroup("-100001")
+    return aliceId to groupId
+}
+
+private suspend fun CommandFixture.sendSplit(
+    memberId: MemberId,
+    groupId: GroupId,
+    args: String,
+) = command.handle(CommandContext(COMMAND_CHAT_ID, memberId, "1", groupId, args))
+
+private fun CommandFixture.currentState() = splitStateStore.get(COMMAND_CHAT_ID)
+
+private fun CommandFixture.currentDraft() = currentState() as? PendingSplitDraft
+
+private fun CommandFixture.currentFlow() = currentState() as? PendingSplit
+
 class SplitExpenseCommandSpec :
     StringSpec({
 
         "starts a split-mode choice flow for the sender and mentioned members" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val groupRepository = ExposedGroupRepository(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val expenseRepository = ExposedExpenseRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+                val fixture = CommandFixture(db)
+                val (aliceId, bobbyId, groupId) = fixture.aliceAndBobbyMemberOnly()
 
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100001")
-                resolver.ensureGroupMembership(groupId, aliceId)
-                val bobbyId = resolver.resolveMember("2", "bobby", "Bob") // Bob has run a command before, so @bobby resolves
+                fixture.sendSplit(aliceId, groupId, "90 dinner @bobby")
 
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
-                val flowStarter = SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-                val command =
-                    SplitExpenseCommand(
-                        platformDirectory,
-                        groupRepository,
-                        memberRepository,
-                        resolver,
-                        telegramApi,
-                        splitStateStore,
-                        flowStarter,
-                    )
+                fixture.expenseRepository.listActive(groupId) shouldBe emptyList()
+                fixture.telegramApi.sentMessages.single() shouldBe (-100L to SPLIT_MODE_PROMPT)
+                fixture.telegramApi.sentKeyboards.single() shouldBe splitModeKeyboard()
 
-                command.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner @bobby"))
-
-                expenseRepository.listActive(groupId) shouldBe emptyList()
-                telegramApi.sentMessages.single() shouldBe (-100L to SPLIT_MODE_PROMPT)
-                telegramApi.sentKeyboards.single() shouldBe splitModeKeyboard()
-
-                val flow = splitStateStore.get(-100) as? PendingSplit
+                val flow = fixture.currentFlow()
                 flow?.invokerId shouldBe aliceId
                 flow?.groupId shouldBe groupId
                 flow?.amount shouldBe BigDecimal("90.00")
@@ -58,216 +107,93 @@ class SplitExpenseCommandSpec :
 
         "replies with an error and doesn't start a flow for an unrecognized mention" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val groupRepository = ExposedGroupRepository(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val expenseRepository = ExposedExpenseRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+                val fixture = CommandFixture(db)
+                val (aliceId, groupId) = fixture.aliceUnregistered()
 
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100001")
+                fixture.sendSplit(aliceId, groupId, "90 dinner @stranger")
 
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
-                val flowStarter = SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-                val command =
-                    SplitExpenseCommand(
-                        platformDirectory,
-                        groupRepository,
-                        memberRepository,
-                        resolver,
-                        telegramApi,
-                        splitStateStore,
-                        flowStarter,
-                    )
-
-                command.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner @stranger"))
-
-                expenseRepository.listActive(groupId) shouldBe emptyList()
-                splitStateStore.get(-100) shouldBe null
-                telegramApi.sentMessages.single().second shouldBe
+                fixture.expenseRepository.listActive(groupId) shouldBe emptyList()
+                fixture.currentState() shouldBe null
+                fixture.telegramApi.sentMessages
+                    .single()
+                    .second shouldBe
                     "I don't recognize <code>@stranger</code> yet — ask them to run /start with me first."
             }
         }
 
         "the equal keyword creates the expense immediately, no flow" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val groupRepository = ExposedGroupRepository(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val expenseRepository = ExposedExpenseRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+                val fixture = CommandFixture(db)
+                val (aliceId, bobbyId, groupId) = fixture.aliceAndBobbyMemberOnly()
 
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100001")
-                resolver.ensureGroupMembership(groupId, aliceId)
-                val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
+                fixture.sendSplit(aliceId, groupId, "equal 90 dinner @bobby")
 
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
-                val flowStarter = SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-                val command =
-                    SplitExpenseCommand(
-                        platformDirectory,
-                        groupRepository,
-                        memberRepository,
-                        resolver,
-                        telegramApi,
-                        splitStateStore,
-                        flowStarter,
-                    )
-
-                command.handle(CommandContext(-100, aliceId, "1", groupId, "equal 90 dinner @bobby"))
-
-                val expense = expenseRepository.listActive(groupId).single()
+                val expense = fixture.expenseRepository.listActive(groupId).single()
                 expense.shares.associate { it.memberId to it.shareAmount } shouldBe
                     mapOf(
                         aliceId to BigDecimal("45.00"),
                         bobbyId to BigDecimal("45.00"),
                     )
-                splitStateStore.get(-100) shouldBe null
+                fixture.currentState() shouldBe null
             }
         }
 
         "per-mention amounts create the exact-split expense immediately, no flow" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val groupRepository = ExposedGroupRepository(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val expenseRepository = ExposedExpenseRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+                val fixture = CommandFixture(db)
+                val (aliceId, bobbyId, groupId) = fixture.aliceAndBobbyMemberOnly()
 
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100001")
-                resolver.ensureGroupMembership(groupId, aliceId)
-                val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
+                fixture.sendSplit(aliceId, groupId, "90 dinner @bobby 40")
 
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
-                val flowStarter = SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-                val command =
-                    SplitExpenseCommand(
-                        platformDirectory,
-                        groupRepository,
-                        memberRepository,
-                        resolver,
-                        telegramApi,
-                        splitStateStore,
-                        flowStarter,
-                    )
-
-                command.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner @bobby 40"))
-
-                val expense = expenseRepository.listActive(groupId).single()
+                val expense = fixture.expenseRepository.listActive(groupId).single()
                 expense.shares.associate { it.memberId to it.shareAmount } shouldBe
                     mapOf(
                         aliceId to BigDecimal("50.00"),
                         bobbyId to BigDecimal("40.00"),
                     )
-                splitStateStore.get(-100) shouldBe null
+                fixture.currentState() shouldBe null
             }
         }
 
         "the exact keyword with no per-mention amounts jumps straight into entering amounts" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val groupRepository = ExposedGroupRepository(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val expenseRepository = ExposedExpenseRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+                val fixture = CommandFixture(db)
+                val (aliceId, _, groupId) = fixture.aliceAndBobbyMemberOnly()
 
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100001")
-                resolver.ensureGroupMembership(groupId, aliceId)
-                resolver.resolveMember("2", "bobby", "Bob")
+                fixture.sendSplit(aliceId, groupId, "exact 90 dinner @bobby")
 
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
-                val flowStarter = SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-                val command =
-                    SplitExpenseCommand(
-                        platformDirectory,
-                        groupRepository,
-                        memberRepository,
-                        resolver,
-                        telegramApi,
-                        splitStateStore,
-                        flowStarter,
-                    )
-
-                command.handle(CommandContext(-100, aliceId, "1", groupId, "exact 90 dinner @bobby"))
-
-                expenseRepository.listActive(groupId) shouldBe emptyList()
-                (splitStateStore.get(-100) as? PendingSplit)?.stage shouldBe SplitFlowStage.ENTERING_AMOUNTS
+                fixture.expenseRepository.listActive(groupId) shouldBe emptyList()
+                fixture.currentFlow()?.stage shouldBe SplitFlowStage.ENTERING_AMOUNTS
             }
         }
 
         "a bare /split starts the guided draft, asking for the description first" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val groupRepository = ExposedGroupRepository(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val expenseRepository = ExposedExpenseRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+                val fixture = CommandFixture(db)
+                val (aliceId, groupId) = fixture.aliceOnly()
 
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100001")
-                resolver.ensureGroupMembership(groupId, aliceId)
+                fixture.sendSplit(aliceId, groupId, "")
 
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
-                val flowStarter = SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-                val command =
-                    SplitExpenseCommand(
-                        platformDirectory,
-                        groupRepository,
-                        memberRepository,
-                        resolver,
-                        telegramApi,
-                        splitStateStore,
-                        flowStarter,
-                    )
-
-                command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
-
-                val draft = splitStateStore.get(-100) as? PendingSplitDraft
+                val draft = fixture.currentDraft()
                 draft?.awaiting shouldBe SplitDraftField.DESCRIPTION
                 draft?.description shouldBe null
                 draft?.amount shouldBe null
                 draft?.mentionUsernames shouldBe emptyList()
-                telegramApi.sentForceReplyPrompts.single().second shouldBe splitDraftPromptText(SplitDraftField.DESCRIPTION, "USD")
+                fixture.telegramApi.sentForceReplyPrompts
+                    .single()
+                    .second shouldBe
+                    splitDraftPromptText(SplitDraftField.DESCRIPTION, "USD")
             }
         }
 
         "/split dinner starts the guided draft with the description pre-filled, asking for the amount" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val groupRepository = ExposedGroupRepository(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val expenseRepository = ExposedExpenseRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+                val fixture = CommandFixture(db)
+                val (aliceId, groupId) = fixture.aliceOnly()
 
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100001")
-                resolver.ensureGroupMembership(groupId, aliceId)
+                fixture.sendSplit(aliceId, groupId, "dinner")
 
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
-                val flowStarter = SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-                val command =
-                    SplitExpenseCommand(
-                        platformDirectory,
-                        groupRepository,
-                        memberRepository,
-                        resolver,
-                        telegramApi,
-                        splitStateStore,
-                        flowStarter,
-                    )
-
-                command.handle(CommandContext(-100, aliceId, "1", groupId, "dinner"))
-
-                val draft = splitStateStore.get(-100) as? PendingSplitDraft
+                val draft = fixture.currentDraft()
                 draft?.awaiting shouldBe SplitDraftField.AMOUNT
                 draft?.description shouldBe "dinner"
             }
@@ -275,70 +201,27 @@ class SplitExpenseCommandSpec :
 
         "/split 90 dinner with no mentions asks for participants, listing known group members" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val groupRepository = ExposedGroupRepository(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val expenseRepository = ExposedExpenseRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+                val fixture = CommandFixture(db)
+                val (aliceId, _, groupId) = fixture.aliceAndBobbyBothMembers()
 
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100001")
-                resolver.ensureGroupMembership(groupId, aliceId)
-                val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
-                resolver.ensureGroupMembership(groupId, bobbyId)
+                fixture.sendSplit(aliceId, groupId, "90 dinner")
 
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
-                val flowStarter = SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-                val command =
-                    SplitExpenseCommand(
-                        platformDirectory,
-                        groupRepository,
-                        memberRepository,
-                        resolver,
-                        telegramApi,
-                        splitStateStore,
-                        flowStarter,
-                    )
-
-                command.handle(CommandContext(-100, aliceId, "1", groupId, "90 dinner"))
-
-                (splitStateStore.get(-100) as? PendingSplitDraft)?.awaiting shouldBe SplitDraftField.PARTICIPANTS
-                telegramApi.sentForceReplyPrompts.single().second shouldBe
+                fixture.currentDraft()?.awaiting shouldBe SplitDraftField.PARTICIPANTS
+                fixture.telegramApi.sentForceReplyPrompts
+                    .single()
+                    .second shouldBe
                     "Who split this with you? Reply with their usernames. Members:\n\n• @bobby"
             }
         }
 
         "/split @alice @bob starts the guided draft with participants pre-filled, asking for the description" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val groupRepository = ExposedGroupRepository(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val expenseRepository = ExposedExpenseRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+                val fixture = CommandFixture(db)
+                val (aliceId, _, groupId) = fixture.aliceAndBobbyMemberOnly()
 
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100001")
-                resolver.ensureGroupMembership(groupId, aliceId)
-                resolver.resolveMember("2", "bobby", "Bob")
+                fixture.sendSplit(aliceId, groupId, "@bobby")
 
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
-                val flowStarter = SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-                val command =
-                    SplitExpenseCommand(
-                        platformDirectory,
-                        groupRepository,
-                        memberRepository,
-                        resolver,
-                        telegramApi,
-                        splitStateStore,
-                        flowStarter,
-                    )
-
-                command.handle(CommandContext(-100, aliceId, "1", groupId, "@bobby"))
-
-                val draft = splitStateStore.get(-100) as? PendingSplitDraft
+                val draft = fixture.currentDraft()
                 draft?.awaiting shouldBe SplitDraftField.DESCRIPTION
                 draft?.mentionUsernames shouldBe listOf("bobby")
             }

@@ -2,359 +2,272 @@ package split.telegram
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import org.jetbrains.exposed.v1.jdbc.Database
+import split.core.GroupId
+import split.core.MemberId
 import split.storage.ExposedGroupRepository
 import split.storage.ExposedMemberRepository
 import split.storage.ExposedPlatformDirectory
 import java.math.BigDecimal
+
+private const val REPLY_CHAT_ID = -100L
+private const val INVALID_AMOUNT_MESSAGE =
+    "That doesn't look like an amount — reply with a positive number with at most 2 decimal places, e.g. 42.50."
+
+private class ReplyFixture(
+    db: Database,
+) {
+    val platformDirectory = ExposedPlatformDirectory(db)
+    val memberRepository = ExposedMemberRepository(db)
+    val resolver = IdentityResolver(platformDirectory, memberRepository, ExposedGroupRepository(db))
+    val telegramApi = FakeTelegramApi()
+    val splitStateStore = SplitStateStore()
+    val handler = SplitFlowReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi)
+}
+
+private suspend fun ReplyFixture.aliceAndBob(): Triple<MemberId, MemberId, GroupId> {
+    val aliceId = resolver.resolveMember("1", "alice", "Alice")
+    val bobId = resolver.resolveMember("2", "bob", "Bob")
+    val groupId = resolver.resolveGroup("-100")
+    return Triple(aliceId, bobId, groupId)
+}
+
+private suspend fun ReplyFixture.aliceAndBobInGroup(): Triple<MemberId, MemberId, GroupId> {
+    val (aliceId, bobId, groupId) = aliceAndBob()
+    resolver.ensureGroupMembership(groupId, aliceId)
+    resolver.ensureGroupMembership(groupId, bobId)
+    return Triple(aliceId, bobId, groupId)
+}
+
+private suspend fun ReplyFixture.aliceOnly(): Pair<MemberId, GroupId> {
+    val aliceId = resolver.resolveMember("1", "alice", "Alice")
+    val groupId = resolver.resolveGroup("-100")
+    return aliceId to groupId
+}
+
+private suspend fun ReplyFixture.aliceOnlyInGroup(): Pair<MemberId, GroupId> {
+    val (aliceId, groupId) = aliceOnly()
+    resolver.ensureGroupMembership(groupId, aliceId)
+    return aliceId to groupId
+}
+
+private fun ReplyFixture.anEnteringAmountsFlow(
+    invokerId: MemberId,
+    groupId: GroupId,
+    participantIds: List<MemberId>,
+    pendingParticipantId: MemberId?,
+    pendingPromptMessageId: Long? = 3,
+) = PendingSplit(
+    invokerId = invokerId,
+    groupId = groupId,
+    amount = BigDecimal("90.00"),
+    currency = "USD",
+    description = "dinner",
+    participantIds = participantIds,
+    promptMessageId = 1,
+    stage = SplitFlowStage.ENTERING_AMOUNTS,
+    actionsMessageId = 2,
+    pendingParticipantId = pendingParticipantId,
+    pendingPromptMessageId = pendingPromptMessageId,
+)
+
+private fun ReplyFixture.setFlow(flow: PendingSplit) = splitStateStore.set(REPLY_CHAT_ID, flow)
+
+private fun ReplyFixture.currentFlow() = splitStateStore.get(REPLY_CHAT_ID)
+
+private suspend fun ReplyFixture.reply(
+    memberId: MemberId,
+    groupId: GroupId,
+    replyToMessageId: Long,
+    text: String,
+) = handler.handle(ReplyContext(REPLY_CHAT_ID, memberId, groupId, replyToMessageId, text))
+
+private suspend fun ReplyFixture.replyIsRejectedAsInvalidAmount(
+    memberId: MemberId,
+    groupId: GroupId,
+    replyToMessageId: Long,
+    text: String,
+    pending: PendingSplit,
+) {
+    reply(memberId, groupId, replyToMessageId, text)
+
+    currentFlow() shouldBe pending
+    telegramApi.sentMessages.single().second shouldBe INVALID_AMOUNT_MESSAGE
+}
 
 class SplitFlowReplyHandlerSpec :
     StringSpec({
 
         "a valid amount reply fills in the pending participant, edits both messages, and auto-advances to the next unfilled one" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, ExposedGroupRepository(db))
-
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val bobId = resolver.resolveMember("2", "bob", "Bob")
-                val groupId = resolver.resolveGroup("-100")
-                resolver.ensureGroupMembership(groupId, aliceId)
-                resolver.ensureGroupMembership(groupId, bobId)
-
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
-                splitStateStore.set(
-                    -100,
-                    PendingSplit(
-                        invokerId = aliceId,
-                        groupId = groupId,
-                        amount = BigDecimal("90.00"),
-                        currency = "USD",
-                        description = "dinner",
-                        participantIds = listOf(aliceId, bobId),
-                        promptMessageId = 1,
-                        stage = SplitFlowStage.ENTERING_AMOUNTS,
-                        actionsMessageId = 2,
+                val fixture = ReplyFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
+                fixture.setFlow(
+                    fixture.anEnteringAmountsFlow(
+                        aliceId,
+                        groupId,
+                        listOf(aliceId, bobId),
                         pendingParticipantId = bobId,
-                        pendingPromptMessageId = 3,
                     ),
                 )
-                val handler = SplitFlowReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi)
 
-                handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 3, text = "40"))
+                fixture.reply(aliceId, groupId, replyToMessageId = 3, text = "40")
 
-                val flow = splitStateStore.get(-100) as? PendingSplit
+                val flow = fixture.currentFlow() as? PendingSplit
                 flow?.amountsEntered shouldBe mapOf(bobId to BigDecimal("40"))
                 flow?.pendingParticipantId shouldBe aliceId
-                telegramApi.sentForceReplyPrompts.single().second shouldBe
+                fixture.telegramApi.sentForceReplyPrompts
+                    .single()
+                    .second shouldBe
                     "How much is @alice's share? Reply to this message with an amount."
-                telegramApi.editedRichMessages.single().let { (chatId, messageId, _) ->
+                fixture.telegramApi.editedRichMessages.single().let { (chatId, messageId, _) ->
                     chatId shouldBe -100L
                     messageId shouldBe 1L
                 }
 
-                // The actions message migrates: the old one (id 2, seeded in the fixture) is
-                // deleted and a fresh one sent — id 1, the first message this handler sends.
-                telegramApi.deletedMessages.single() shouldBe (-100L to 2L)
-                telegramApi.sentMessages.single().first shouldBe -100L
+                fixture.telegramApi.deletedMessages.single() shouldBe (-100L to 2L)
+                fixture.telegramApi.sentMessages
+                    .single()
+                    .first shouldBe -100L
                 flow?.actionsMessageId shouldBe 1L
-
-                // The next participant's ForceReply prompt is sent after that — id 2.
                 flow?.pendingPromptMessageId shouldBe 2L
             }
         }
 
         "a reply for a manually-picked participant does not auto-advance to the next one" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, ExposedGroupRepository(db))
-
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val bobId = resolver.resolveMember("2", "bob", "Bob")
-                val groupId = resolver.resolveGroup("-100")
-                resolver.ensureGroupMembership(groupId, aliceId)
-                resolver.ensureGroupMembership(groupId, bobId)
-
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
-                splitStateStore.set(
-                    -100,
-                    PendingSplit(
-                        invokerId = aliceId,
-                        groupId = groupId,
-                        amount = BigDecimal("90.00"),
-                        currency = "USD",
-                        description = "dinner",
-                        participantIds = listOf(aliceId, bobId),
-                        promptMessageId = 1,
-                        stage = SplitFlowStage.ENTERING_AMOUNTS,
-                        actionsMessageId = 2,
-                        pendingParticipantId = bobId,
-                        pendingPromptMessageId = 3,
-                        pendingIsAutoAdvance = false,
-                    ),
+                val fixture = ReplyFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
+                fixture.setFlow(
+                    fixture
+                        .anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId), pendingParticipantId = bobId)
+                        .copy(pendingIsAutoAdvance = false),
                 )
-                val handler = SplitFlowReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi)
 
-                handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 3, text = "40"))
+                fixture.reply(aliceId, groupId, replyToMessageId = 3, text = "40")
 
-                val flow = splitStateStore.get(-100) as? PendingSplit
+                val flow = fixture.currentFlow() as? PendingSplit
                 flow?.amountsEntered shouldBe mapOf(bobId to BigDecimal("40"))
                 flow?.pendingParticipantId shouldBe null
                 flow?.pendingPromptMessageId shouldBe null
-                telegramApi.sentForceReplyPrompts shouldBe emptyList()
+                fixture.telegramApi.sentForceReplyPrompts shouldBe emptyList()
             }
         }
 
         "once every participant has an amount, the flow stops advancing and waits for Confirm" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, ExposedGroupRepository(db))
-
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100")
-                resolver.ensureGroupMembership(groupId, aliceId)
-
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
-                splitStateStore.set(
-                    -100,
-                    PendingSplit(
-                        invokerId = aliceId,
-                        groupId = groupId,
-                        amount = BigDecimal("90.00"),
-                        currency = "USD",
-                        description = "dinner",
-                        participantIds = listOf(aliceId),
-                        promptMessageId = 1,
-                        stage = SplitFlowStage.ENTERING_AMOUNTS,
-                        actionsMessageId = 2,
-                        pendingParticipantId = aliceId,
-                        pendingPromptMessageId = 3,
-                    ),
+                val fixture = ReplyFixture(db)
+                val (aliceId, groupId) = fixture.aliceOnlyInGroup()
+                fixture.setFlow(
+                    fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId), pendingParticipantId = aliceId),
                 )
-                val handler = SplitFlowReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi)
 
-                handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 3, text = "90"))
+                fixture.reply(aliceId, groupId, replyToMessageId = 3, text = "90")
 
-                val flow = splitStateStore.get(-100) as? PendingSplit
+                val flow = fixture.currentFlow() as? PendingSplit
                 flow?.amountsEntered shouldBe mapOf(aliceId to BigDecimal("90"))
                 flow?.pendingParticipantId shouldBe null
                 flow?.pendingPromptMessageId shouldBe null
-                telegramApi.sentForceReplyPrompts shouldBe emptyList()
+                fixture.telegramApi.sentForceReplyPrompts shouldBe emptyList()
 
-                // The actions message still migrates even when nothing more is pending — its
-                // updated Confirm button needs to land in the freshest message either way.
-                telegramApi.deletedMessages.single() shouldBe (-100L to 2L)
+                fixture.telegramApi.deletedMessages.single() shouldBe (-100L to 2L)
                 flow?.actionsMessageId shouldBe 1L
             }
         }
 
         "an invalid amount reply doesn't touch state and asks again" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, ExposedGroupRepository(db))
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100")
-
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
+                val fixture = ReplyFixture(db)
+                val (aliceId, groupId) = fixture.aliceOnly()
                 val pending =
-                    PendingSplit(
-                        invokerId = aliceId,
-                        groupId = groupId,
-                        amount = BigDecimal("90.00"),
-                        currency = "USD",
-                        description = "dinner",
-                        participantIds = listOf(aliceId),
-                        promptMessageId = 1,
-                        stage = SplitFlowStage.ENTERING_AMOUNTS,
-                        actionsMessageId = 2,
-                        pendingParticipantId = aliceId,
-                        pendingPromptMessageId = 3,
-                    )
-                splitStateStore.set(-100, pending)
-                val handler = SplitFlowReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi)
+                    fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId), pendingParticipantId = aliceId)
+                fixture.setFlow(pending)
 
-                handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 3, text = "not a number"))
-
-                splitStateStore.get(-100) shouldBe pending
-                telegramApi.sentMessages.single().second shouldBe
-                    "That doesn't look like an amount — reply with a positive number with at most 2 decimal places, e.g. 42.50."
+                fixture.replyIsRejectedAsInvalidAmount(
+                    aliceId,
+                    groupId,
+                    replyToMessageId = 3,
+                    text = "not a number",
+                    pending,
+                )
             }
         }
 
         "a reply with more than 2 decimal places doesn't touch state and asks again" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, ExposedGroupRepository(db))
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100")
-
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
+                val fixture = ReplyFixture(db)
+                val (aliceId, groupId) = fixture.aliceOnly()
                 val pending =
-                    PendingSplit(
-                        invokerId = aliceId,
-                        groupId = groupId,
-                        amount = BigDecimal("90.00"),
-                        currency = "USD",
-                        description = "dinner",
-                        participantIds = listOf(aliceId),
-                        promptMessageId = 1,
-                        stage = SplitFlowStage.ENTERING_AMOUNTS,
-                        actionsMessageId = 2,
-                        pendingParticipantId = aliceId,
-                        pendingPromptMessageId = 3,
-                    )
-                splitStateStore.set(-100, pending)
-                val handler = SplitFlowReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi)
+                    fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId), pendingParticipantId = aliceId)
+                fixture.setFlow(pending)
 
-                handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 3, text = "33.333"))
-
-                splitStateStore.get(-100) shouldBe pending
-                telegramApi.sentMessages.single().second shouldBe
-                    "That doesn't look like an amount — reply with a positive number with at most 2 decimal places, e.g. 42.50."
+                fixture.replyIsRejectedAsInvalidAmount(aliceId, groupId, replyToMessageId = 3, text = "33.333", pending)
             }
         }
 
         "a non-positive amount reply doesn't touch state and asks again" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, ExposedGroupRepository(db))
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100")
-
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
+                val fixture = ReplyFixture(db)
+                val (aliceId, groupId) = fixture.aliceOnly()
                 val pending =
-                    PendingSplit(
-                        invokerId = aliceId,
-                        groupId = groupId,
-                        amount = BigDecimal("90.00"),
-                        currency = "USD",
-                        description = "dinner",
-                        participantIds = listOf(aliceId),
-                        promptMessageId = 1,
-                        stage = SplitFlowStage.ENTERING_AMOUNTS,
-                        actionsMessageId = 2,
-                        pendingParticipantId = aliceId,
-                        pendingPromptMessageId = 3,
-                    )
-                splitStateStore.set(-100, pending)
-                val handler = SplitFlowReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi)
+                    fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId), pendingParticipantId = aliceId)
+                fixture.setFlow(pending)
 
-                handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 3, text = "-5"))
-
-                splitStateStore.get(-100) shouldBe pending
-                telegramApi.sentMessages.single().second shouldBe
-                    "That doesn't look like an amount — reply with a positive number with at most 2 decimal places, e.g. 42.50."
+                fixture.replyIsRejectedAsInvalidAmount(aliceId, groupId, replyToMessageId = 3, text = "-5", pending)
             }
         }
 
         "a reply from someone other than the invoker is ignored" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, ExposedGroupRepository(db))
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val bobId = resolver.resolveMember("2", "bob", "Bob")
-                val groupId = resolver.resolveGroup("-100")
-
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
+                val fixture = ReplyFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBob()
                 val pending =
-                    PendingSplit(
-                        invokerId = aliceId,
-                        groupId = groupId,
-                        amount = BigDecimal("90.00"),
-                        currency = "USD",
-                        description = "dinner",
-                        participantIds = listOf(aliceId, bobId),
-                        promptMessageId = 1,
-                        stage = SplitFlowStage.ENTERING_AMOUNTS,
-                        actionsMessageId = 2,
+                    fixture.anEnteringAmountsFlow(
+                        aliceId,
+                        groupId,
+                        listOf(aliceId, bobId),
                         pendingParticipantId = bobId,
-                        pendingPromptMessageId = 3,
                     )
-                splitStateStore.set(-100, pending)
-                val handler = SplitFlowReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi)
+                fixture.setFlow(pending)
 
-                handler.handle(ReplyContext(-100, bobId, groupId, replyToMessageId = 3, text = "40"))
+                fixture.reply(bobId, groupId, replyToMessageId = 3, text = "40")
 
-                splitStateStore.get(-100) shouldBe pending
-                telegramApi.sentMessages shouldBe emptyList()
+                fixture.currentFlow() shouldBe pending
+                fixture.telegramApi.sentMessages shouldBe emptyList()
             }
         }
 
         "a reply to the wrong message is ignored" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, ExposedGroupRepository(db))
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100")
-
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
+                val fixture = ReplyFixture(db)
+                val (aliceId, groupId) = fixture.aliceOnly()
                 val pending =
-                    PendingSplit(
-                        invokerId = aliceId,
-                        groupId = groupId,
-                        amount = BigDecimal("90.00"),
-                        currency = "USD",
-                        description = "dinner",
-                        participantIds = listOf(aliceId),
-                        promptMessageId = 1,
-                        stage = SplitFlowStage.ENTERING_AMOUNTS,
-                        actionsMessageId = 2,
-                        pendingParticipantId = aliceId,
-                        pendingPromptMessageId = 3,
-                    )
-                splitStateStore.set(-100, pending)
-                val handler = SplitFlowReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi)
+                    fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId), pendingParticipantId = aliceId)
+                fixture.setFlow(pending)
 
-                handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 999, text = "40"))
+                fixture.reply(aliceId, groupId, replyToMessageId = 999, text = "40")
 
-                splitStateStore.get(-100) shouldBe pending
+                fixture.currentFlow() shouldBe pending
             }
         }
 
         "a reply when no participant is pending is ignored" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val resolver = IdentityResolver(platformDirectory, memberRepository, ExposedGroupRepository(db))
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100")
-
-                val telegramApi = FakeTelegramApi()
-                val splitStateStore = SplitStateStore()
+                val fixture = ReplyFixture(db)
+                val (aliceId, groupId) = fixture.aliceOnly()
                 val pending =
-                    PendingSplit(
-                        invokerId = aliceId,
-                        groupId = groupId,
-                        amount = BigDecimal("90.00"),
-                        currency = "USD",
-                        description = "dinner",
-                        participantIds = listOf(aliceId),
-                        promptMessageId = 1,
-                        stage = SplitFlowStage.ENTERING_AMOUNTS,
-                        actionsMessageId = 2,
+                    fixture.anEnteringAmountsFlow(
+                        aliceId,
+                        groupId,
+                        listOf(aliceId),
                         pendingParticipantId = null,
+                        pendingPromptMessageId = null,
                     )
-                splitStateStore.set(-100, pending)
-                val handler = SplitFlowReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi)
+                fixture.setFlow(pending)
 
-                handler.handle(ReplyContext(-100, aliceId, groupId, replyToMessageId = 1, text = "40"))
+                fixture.reply(aliceId, groupId, replyToMessageId = 1, text = "40")
 
-                splitStateStore.get(-100) shouldBe pending
+                fixture.currentFlow() shouldBe pending
             }
         }
     })
