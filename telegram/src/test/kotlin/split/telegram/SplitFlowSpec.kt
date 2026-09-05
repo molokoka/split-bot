@@ -211,9 +211,11 @@ class SplitFlowSpec :
                     (fixture.splitStateStore.listAll(CHAT_ID).single() as PendingSplit).promptMessageId
 
                 fixture.startSplit(aliceId, groupId, "90 dinner @bobby")
-                val dinnerFlow = fixture.splitStateStore.listAll(CHAT_ID)
-                    .filterIsInstance<PendingSplit>()
-                    .single { it.promptMessageId != coffeePromptMessageId }
+                val dinnerFlow =
+                    fixture.splitStateStore
+                        .listAll(CHAT_ID)
+                        .filterIsInstance<PendingSplit>()
+                        .single { it.promptMessageId != coffeePromptMessageId }
                 dinnerFlow.description shouldBe "dinner"
 
                 fixture.tapEqual(aliceId, groupId, coffeePromptMessageId)
@@ -245,20 +247,23 @@ class SplitFlowSpec :
                 fixture.replyWithAmount(aliceId, groupId, coffeeAlicePromptId, "15")
 
                 fixture.startSplit(aliceId, groupId, "90 dinner @bobby")
-                val dinnerPromptMessageId = fixture.splitStateStore.listAll(CHAT_ID)
-                    .filterIsInstance<PendingSplit>()
-                    .single { it.promptMessageId != coffeePromptMessageId }
-                    .promptMessageId
+                val dinnerPromptMessageId =
+                    fixture.splitStateStore
+                        .listAll(CHAT_ID)
+                        .filterIsInstance<PendingSplit>()
+                        .single { it.promptMessageId != coffeePromptMessageId }
+                        .promptMessageId
+                fixture.tapExact(aliceId, groupId, dinnerPromptMessageId)
 
-                val coffeeActionsMessageId =
-                    (fixture.splitStateStore.find(CHAT_ID, coffeePromptMessageId) as PendingSplit).actionsMessageId!!
+                val dinnerActionsMessageId =
+                    (fixture.splitStateStore.find(CHAT_ID, dinnerPromptMessageId) as PendingSplit).actionsMessageId!!
                 fixture.callbackHandler.handle(
-                    CallbackContext(CHAT_ID, aliceId, groupId, "cbq", coffeeActionsMessageId, SPLIT_CANCEL_DATA),
+                    CallbackContext(CHAT_ID, aliceId, groupId, "cbq", dinnerActionsMessageId, SPLIT_CANCEL_DATA),
                 )
 
-                fixture.splitStateStore.find(CHAT_ID, coffeePromptMessageId) shouldBe null
-                (fixture.splitStateStore.find(CHAT_ID, dinnerPromptMessageId) as PendingSplit)
-                    .amountsEntered shouldBe emptyMap()
+                fixture.splitStateStore.find(CHAT_ID, dinnerPromptMessageId) shouldBe null
+                (fixture.splitStateStore.find(CHAT_ID, coffeePromptMessageId) as PendingSplit)
+                    .amountsEntered shouldBe mapOf(aliceId to BigDecimal("15.00"))
             }
         }
     })

@@ -8,6 +8,7 @@ import split.storage.ExposedGroupRepository
 import split.storage.ExposedMemberRepository
 import split.storage.ExposedSplitFlowStateRepository
 import java.math.BigDecimal
+import java.nio.file.Files
 import java.time.Instant
 
 class SplitStateStoreSpec : StringSpec({
@@ -18,29 +19,31 @@ class SplitStateStoreSpec : StringSpec({
         ExposedMemberRepository(db).create(split.core.Member(MemberId("bob"), "Bob"))
     }
 
-    fun aFlow(promptMessageId: Long = 1) = PendingSplit(
-        invokerId = MemberId("alice"),
-        groupId = GroupId("g1"),
-        amount = BigDecimal("90.00"),
-        currency = "USD",
-        description = "dinner",
-        participantIds = listOf(MemberId("alice"), MemberId("bob")),
-        promptMessageId = promptMessageId,
-        stage = SplitFlowStage.CHOOSING_MODE,
-    )
+    fun aFlow(promptMessageId: Long = 1) =
+        PendingSplit(
+            invokerId = MemberId("alice"),
+            groupId = GroupId("g1"),
+            amount = BigDecimal("90.00"),
+            currency = "USD",
+            description = "dinner",
+            participantIds = listOf(MemberId("alice"), MemberId("bob")),
+            promptMessageId = promptMessageId,
+            stage = SplitFlowStage.CHOOSING_MODE,
+        )
 
-    fun aDraft(promptMessageId: Long = 1) = PendingSplitDraft(
-        invokerId = MemberId("alice"),
-        groupId = GroupId("g1"),
-        splitTypeHint = null,
-        description = null,
-        amount = null,
-        currency = "USD",
-        mentionUsernames = emptyList(),
-        exactAmounts = null,
-        awaiting = SplitDraftField.DESCRIPTION,
-        promptMessageId = promptMessageId,
-    )
+    fun aDraft(promptMessageId: Long = 1) =
+        PendingSplitDraft(
+            invokerId = MemberId("alice"),
+            groupId = GroupId("g1"),
+            splitTypeHint = null,
+            description = null,
+            amount = null,
+            currency = "USD",
+            mentionUsernames = emptyList(),
+            exactAmounts = null,
+            awaiting = SplitDraftField.DESCRIPTION,
+            promptMessageId = promptMessageId,
+        )
 
     "returns null when there's no matching flow for a chat/message id" {
         withTestDatabase { db ->
@@ -144,8 +147,8 @@ class SplitStateStoreSpec : StringSpec({
     }
 
     "a flow set before a restart is still found after reconnecting to the same database file" {
-        val dbFile = java.nio.file.Files.createTempFile("split-restart-test-", ".db")
-        java.nio.file.Files.delete(dbFile)
+        val dbFile = Files.createTempFile("split-restart-test-", ".db")
+        Files.delete(dbFile)
         val path = dbFile.toString()
         try {
             val db1 = split.storage.connectDatabase(path)
@@ -157,9 +160,9 @@ class SplitStateStoreSpec : StringSpec({
             val db2 = split.storage.connectDatabase(path)
             SplitStateStore(ExposedSplitFlowStateRepository(db2)).find(-100, 1) shouldBe aFlow()
         } finally {
-            java.nio.file.Files.deleteIfExists(dbFile)
-            java.nio.file.Files.deleteIfExists(dbFile.resolveSibling(dbFile.fileName.toString() + "-wal"))
-            java.nio.file.Files.deleteIfExists(dbFile.resolveSibling(dbFile.fileName.toString() + "-shm"))
+            Files.deleteIfExists(dbFile)
+            Files.deleteIfExists(dbFile.resolveSibling(dbFile.fileName.toString() + "-wal"))
+            Files.deleteIfExists(dbFile.resolveSibling(dbFile.fileName.toString() + "-shm"))
         }
     }
 })
