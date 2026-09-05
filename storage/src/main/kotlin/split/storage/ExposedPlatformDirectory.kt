@@ -14,22 +14,30 @@ import split.core.GroupId
 import split.core.MemberId
 import split.core.PlatformDirectory
 
-class ExposedPlatformDirectory(private val db: Database) : PlatformDirectory {
-
-    override suspend fun findMember(platform: String, externalUserId: String): MemberId? =
+class ExposedPlatformDirectory(
+    private val db: Database,
+) : PlatformDirectory {
+    override suspend fun findMember(
+        platform: String,
+        externalUserId: String,
+    ): MemberId? =
         withContext(Dispatchers.IO) {
             suspendTransaction(db) {
-                PlatformIdentityTable.selectAll()
+                PlatformIdentityTable
+                    .selectAll()
                     .where {
                         (PlatformIdentityTable.platform eq platform) and
                             (PlatformIdentityTable.externalUserId eq externalUserId)
-                    }
-                    .map { MemberId(it[PlatformIdentityTable.memberId]) }
+                    }.map { MemberId(it[PlatformIdentityTable.memberId]) }
                     .singleOrNull()
             }
         }
 
-    override suspend fun linkMember(platform: String, externalUserId: String, memberId: MemberId): Unit =
+    override suspend fun linkMember(
+        platform: String,
+        externalUserId: String,
+        memberId: MemberId,
+    ): Unit =
         withContext(Dispatchers.IO) {
             suspendTransaction(db) {
                 PlatformIdentityTable.insert {
@@ -40,20 +48,27 @@ class ExposedPlatformDirectory(private val db: Database) : PlatformDirectory {
             }
         }
 
-    override suspend fun findMemberByUsername(platform: String, username: String): MemberId? =
+    override suspend fun findMemberByUsername(
+        platform: String,
+        username: String,
+    ): MemberId? =
         withContext(Dispatchers.IO) {
             suspendTransaction(db) {
-                PlatformIdentityTable.selectAll()
+                PlatformIdentityTable
+                    .selectAll()
                     .where {
                         (PlatformIdentityTable.platform eq platform) and
                             (PlatformIdentityTable.username eq username)
-                    }
-                    .map { MemberId(it[PlatformIdentityTable.memberId]) }
+                    }.map { MemberId(it[PlatformIdentityTable.memberId]) }
                     .singleOrNull()
             }
         }
 
-    override suspend fun setUsername(platform: String, externalUserId: String, username: String): Unit =
+    override suspend fun setUsername(
+        platform: String,
+        externalUserId: String,
+        username: String,
+    ): Unit =
         withContext(Dispatchers.IO) {
             suspendTransaction(db) {
                 PlatformIdentityTable.update({
@@ -65,20 +80,27 @@ class ExposedPlatformDirectory(private val db: Database) : PlatformDirectory {
             }
         }
 
-    override suspend fun findGroup(platform: String, externalChatId: String): GroupId? =
+    override suspend fun findGroup(
+        platform: String,
+        externalChatId: String,
+    ): GroupId? =
         withContext(Dispatchers.IO) {
             suspendTransaction(db) {
-                PlatformGroupLinkTable.selectAll()
+                PlatformGroupLinkTable
+                    .selectAll()
                     .where {
                         (PlatformGroupLinkTable.platform eq platform) and
                             (PlatformGroupLinkTable.externalChatId eq externalChatId)
-                    }
-                    .map { GroupId(it[PlatformGroupLinkTable.groupId]) }
+                    }.map { GroupId(it[PlatformGroupLinkTable.groupId]) }
                     .singleOrNull()
             }
         }
 
-    override suspend fun linkGroup(platform: String, externalChatId: String, groupId: GroupId): Unit =
+    override suspend fun linkGroup(
+        platform: String,
+        externalChatId: String,
+        groupId: GroupId,
+    ): Unit =
         withContext(Dispatchers.IO) {
             suspendTransaction(db) {
                 PlatformGroupLinkTable.insert {
@@ -89,21 +111,23 @@ class ExposedPlatformDirectory(private val db: Database) : PlatformDirectory {
             }
         }
 
-    override suspend fun findUsernames(platform: String, memberIds: List<MemberId>): Map<MemberId, String> =
+    override suspend fun findUsernames(
+        platform: String,
+        memberIds: List<MemberId>,
+    ): Map<MemberId, String> =
         withContext(Dispatchers.IO) {
             if (memberIds.isEmpty()) return@withContext emptyMap()
             suspendTransaction(db) {
-                PlatformIdentityTable.selectAll()
+                PlatformIdentityTable
+                    .selectAll()
                     .where {
                         (PlatformIdentityTable.platform eq platform) and
                             (PlatformIdentityTable.memberId inList memberIds.map { it.value })
-                    }
-                    .mapNotNull { row ->
+                    }.mapNotNull { row ->
                         row[PlatformIdentityTable.username]?.let { username ->
                             MemberId(row[PlatformIdentityTable.memberId]) to username
                         }
-                    }
-                    .toMap()
+                    }.toMap()
             }
         }
 }

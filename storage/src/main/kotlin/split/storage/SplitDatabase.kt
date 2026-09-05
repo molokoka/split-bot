@@ -25,7 +25,8 @@ internal fun sqliteDataSource(path: String): SQLiteDataSource =
 fun connectDatabase(path: String): Database {
     val dataSource = sqliteDataSource(path)
 
-    Flyway.configure()
+    Flyway
+        .configure()
         .dataSource(dataSource)
         .load()
         .migrate()
@@ -34,5 +35,4 @@ fun connectDatabase(path: String): Database {
 }
 
 /** Reads [connectDatabase]'s path from `SPLIT_DB_PATH`, defaulting to a local dev file. */
-fun connectDatabaseFromEnv(): Database =
-    connectDatabase(System.getenv("SPLIT_DB_PATH") ?: "./split-dev.db")
+fun connectDatabaseFromEnv(): Database = connectDatabase(System.getenv("SPLIT_DB_PATH") ?: "./split-dev.db")
