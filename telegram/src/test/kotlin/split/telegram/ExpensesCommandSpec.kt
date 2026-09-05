@@ -10,6 +10,7 @@ import split.storage.ExposedExpenseRepository
 import split.storage.ExposedGroupRepository
 import split.storage.ExposedMemberRepository
 import split.storage.ExposedPlatformDirectory
+import split.storage.ExposedSplitFlowStateRepository
 import java.math.BigDecimal
 import java.time.Instant
 
@@ -61,7 +62,9 @@ class ExpensesCommandSpec :
                 )
 
                 val telegramApi = FakeTelegramApi()
-                val command = ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)
+                val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
+                val command =
+                    ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
 
                 command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
@@ -138,7 +141,9 @@ class ExpensesCommandSpec :
                 )
 
                 val telegramApi = FakeTelegramApi()
-                val command = ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)
+                val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
+                val command =
+                    ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
 
                 command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
@@ -190,7 +195,9 @@ class ExpensesCommandSpec :
                 )
 
                 val telegramApi = FakeTelegramApi()
-                val command = ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)
+                val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
+                val command =
+                    ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
 
                 command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
@@ -238,7 +245,9 @@ class ExpensesCommandSpec :
                 )
 
                 val telegramApi = FakeTelegramApi()
-                val command = ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)
+                val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
+                val command =
+                    ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
 
                 command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
@@ -265,7 +274,9 @@ class ExpensesCommandSpec :
                 val groupId = resolver.resolveGroup("-100001")
 
                 val telegramApi = FakeTelegramApi()
-                val command = ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)
+                val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
+                val command =
+                    ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
 
                 command.handle(CommandContext(-100, aliceId, "1", groupId, ""))
 
@@ -273,6 +284,96 @@ class ExpensesCommandSpec :
                     listOf(
                         -100L to InputRichMessage(blocks = listOf(RichBlockParagraph("No expenses yet — use /split to log one."))),
                     )
+            }
+        }
+
+        "expenses pending lists open splits for the group" {
+            withTestDatabase { db ->
+                val platformDirectory = ExposedPlatformDirectory(db)
+                val groupRepository = ExposedGroupRepository(db)
+                val memberRepository = ExposedMemberRepository(db)
+                val expenseRepository = ExposedExpenseRepository(db)
+                val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
+                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+                val aliceId = resolver.resolveMember("1", "alice", "Alice")
+                val groupId = resolver.resolveGroup("-100001")
+                resolver.ensureGroupMembership(groupId, aliceId)
+                val telegramApi = FakeTelegramApi()
+                val command = ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
+                splitStateStore.set(
+                    -100001,
+                    PendingSplit(
+                        invokerId = aliceId,
+                        groupId = groupId,
+                        amount = BigDecimal("90.00"),
+                        currency = "USD",
+                        description = "dinner",
+                        participantIds = listOf(aliceId),
+                        promptMessageId = 1,
+                        stage = SplitFlowStage.ENTERING_AMOUNTS,
+                    ),
+                )
+
+                command.handle(CommandContext(-100001, aliceId, "1", groupId, "pending"))
+
+                val message = telegramApi.sentRichMessages.single().second
+                (message.blocks.single() as RichBlockTable).cells.size shouldBe 2
+            }
+        }
+
+        "expenses pending says so when nothing is open" {
+            withTestDatabase { db ->
+                val platformDirectory = ExposedPlatformDirectory(db)
+                val groupRepository = ExposedGroupRepository(db)
+                val memberRepository = ExposedMemberRepository(db)
+                val expenseRepository = ExposedExpenseRepository(db)
+                val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
+                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+                val aliceId = resolver.resolveMember("1", "alice", "Alice")
+                val groupId = resolver.resolveGroup("-100001")
+                resolver.ensureGroupMembership(groupId, aliceId)
+                val telegramApi = FakeTelegramApi()
+                val command = ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
+
+                command.handle(CommandContext(-100001, aliceId, "1", groupId, "pending"))
+
+                telegramApi.sentRichMessages.single().second.blocks shouldBe listOf(RichBlockParagraph("No pending splits."))
+            }
+        }
+
+        "expenses pending drops a flow once it's been confirmed" {
+            withTestDatabase { db ->
+                val platformDirectory = ExposedPlatformDirectory(db)
+                val groupRepository = ExposedGroupRepository(db)
+                val memberRepository = ExposedMemberRepository(db)
+                val expenseRepository = ExposedExpenseRepository(db)
+                val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
+                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+                val aliceId = resolver.resolveMember("1", "alice", "Alice")
+                val groupId = resolver.resolveGroup("-100001")
+                resolver.ensureGroupMembership(groupId, aliceId)
+                val telegramApi = FakeTelegramApi()
+                val command = ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
+                val callbackHandler =
+                    SplitFlowCallbackHandler(splitStateStore, memberRepository, expenseRepository, platformDirectory, telegramApi)
+                val flow = PendingSplit(
+                    invokerId = aliceId,
+                    groupId = groupId,
+                    amount = BigDecimal("90.00"),
+                    currency = "USD",
+                    description = "dinner",
+                    participantIds = listOf(aliceId),
+                    promptMessageId = 1,
+                    stage = SplitFlowStage.ENTERING_AMOUNTS,
+                    actionsMessageId = 2,
+                    amountsEntered = mapOf(aliceId to BigDecimal("90.00")),
+                )
+                splitStateStore.set(-100001, flow)
+
+                callbackHandler.handle(CallbackContext(-100001, aliceId, groupId, "cbq", 2, SPLIT_CONFIRM_DATA))
+                command.handle(CommandContext(-100001, aliceId, "1", groupId, "pending"))
+
+                telegramApi.sentRichMessages.last().second.blocks shouldBe listOf(RichBlockParagraph("No pending splits."))
             }
         }
     })

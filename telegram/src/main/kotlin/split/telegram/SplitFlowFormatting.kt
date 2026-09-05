@@ -105,3 +105,49 @@ fun splitIsReadyToConfirm(
     val entered = amountsEntered.values.fold(BigDecimal.ZERO) { acc, v -> acc + v }
     return entered.compareTo(amount) == 0
 }
+
+const val PENDING_ENTER_PREFIX = "pending:enter:"
+
+fun pendingSplitEnterData(promptMessageId: Long): String = "$PENDING_ENTER_PREFIX$promptMessageId"
+
+fun buildPendingSplitsMessage(
+    flows: List<PendingSplit>,
+    members: List<Member>,
+    usernames: Map<MemberId, String>,
+): InputRichMessage {
+    if (flows.isEmpty()) {
+        return InputRichMessage(blocks = listOf(RichBlockParagraph("No pending splits.")))
+    }
+    val nameOf = members.associateBy { it.id }
+    val header = listOf("Split", "Status").map { RichBlockTableCell(text = it, isHeader = true) }
+    val rows = flows.map { flow -> pendingSplitRow(flow, nameOf, usernames) }
+    return InputRichMessage(blocks = listOf(RichBlockTable(cells = listOf(header) + rows)))
+}
+
+private fun pendingSplitRow(
+    flow: PendingSplit,
+    nameOf: Map<MemberId, Member>,
+    usernames: Map<MemberId, String>,
+): List<RichBlockTableCell> {
+    val summary = "${flow.description}\n${formatAmount(flow.amount, flow.currency)}"
+    val status =
+        flow.participantIds.joinToString("\n") { memberId ->
+            val name = plainName(nameOf.getValue(memberId), usernames)
+            val amount = flow.amountsEntered[memberId]?.let { formatAmount(it, flow.currency) } ?: "—"
+            "$name $amount"
+        }
+    return listOf(summary, status).map { RichBlockTableCell(text = it) }
+}
+
+fun pendingSplitsKeyboard(flows: List<PendingSplit>): InlineKeyboardMarkup =
+    InlineKeyboardMarkup(
+        inlineKeyboard =
+            flows.map { flow ->
+                listOf(
+                    InlineKeyboardButton(
+                        text = "Enter your amount — ${flow.description}",
+                        callbackData = pendingSplitEnterData(flow.promptMessageId),
+                    ),
+                )
+            },
+    )

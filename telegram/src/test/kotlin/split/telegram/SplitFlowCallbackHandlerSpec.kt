@@ -386,4 +386,68 @@ class SplitFlowCallbackHandlerSpec :
                 fixture.expenseRepository.listActive(groupId) shouldBe emptyList()
             }
         }
+
+        "entering from the pending list sends a fresh prompt to that participant" {
+            withTestDatabase { db ->
+                val fixture = CallbackFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
+                fixture.setFlow(fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId)))
+
+                fixture.handler.handle(
+                    CallbackContext(CALLBACK_CHAT_ID, bobId, groupId, "cbq", 999, pendingSplitEnterData(1)),
+                )
+
+                val updated = fixture.currentFlow()!!
+                updated.pendingParticipantId shouldBe bobId
+                fixture.telegramApi.sentForceReplyPrompts.isNotEmpty() shouldBe true
+            }
+        }
+
+        "entering from the pending list to correct an already-submitted amount" {
+            withTestDatabase { db ->
+                val fixture = CallbackFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
+                fixture.setFlow(
+                    fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId))
+                        .copy(amountsEntered = mapOf(bobId to BigDecimal("40.00"))),
+                )
+
+                fixture.handler.handle(
+                    CallbackContext(CALLBACK_CHAT_ID, bobId, groupId, "cbq", 999, pendingSplitEnterData(1)),
+                )
+
+                val updated = fixture.currentFlow()!!
+                updated.pendingParticipantId shouldBe bobId
+                updated.amountsEntered shouldBe mapOf(bobId to BigDecimal("40.00"))
+            }
+        }
+
+        "entering from the pending list for a non-participant is rejected" {
+            withTestDatabase { db ->
+                val fixture = CallbackFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
+                val carolId = fixture.resolver.resolveMember("3", "carol", "Carol")
+                fixture.setFlow(fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId)))
+
+                fixture.handler.handle(
+                    CallbackContext(CALLBACK_CHAT_ID, carolId, groupId, "cbq", 999, pendingSplitEnterData(1)),
+                )
+
+                fixture.currentFlow()!!.pendingParticipantId shouldBe null
+            }
+        }
+
+        "entering from the pending list for a flow already closed by someone else shows it's no longer active" {
+            withTestDatabase { db ->
+                val fixture = CallbackFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
+                // No flow set for prompt message id 1 — it was already confirmed/cancelled.
+
+                fixture.handler.handle(
+                    CallbackContext(CALLBACK_CHAT_ID, bobId, groupId, "cbq", 999, pendingSplitEnterData(1)),
+                )
+
+                fixture.telegramApi.answeredCallbacks.last() shouldBe Triple("cbq", "This split is no longer active.", true)
+            }
+        }
     })

@@ -76,7 +76,14 @@ suspend fun main() {
                 flowStarter,
             )::handle,
             "delete" to DeleteExpenseCommand(groupRepository, expenseRepository, telegramApi)::handle,
-            "expenses" to ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)::handle,
+            "expenses" to ExpensesCommand(
+                groupRepository,
+                memberRepository,
+                expenseRepository,
+                platformDirectory,
+                telegramApi,
+                splitStateStore,
+            )::handle,
             "balance" to BalanceCommand(
                 groupRepository,
                 memberRepository,

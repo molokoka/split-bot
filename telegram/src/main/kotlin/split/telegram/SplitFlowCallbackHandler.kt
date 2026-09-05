@@ -23,6 +23,10 @@ class SplitFlowCallbackHandler(
     private val clock: Clock = Clock.systemUTC(),
 ) {
     suspend fun handle(context: CallbackContext) {
+        if (context.data.startsWith(PENDING_ENTER_PREFIX)) {
+            enterFromPendingList(context)
+            return
+        }
         val flow = splitStateStore.find(context.chatId, context.messageId) as? PendingSplit
         if (flow == null) {
             telegramApi.answerCallbackQuery(context.callbackQueryId, "This split is no longer active.", showAlert = true)
@@ -118,6 +122,20 @@ class SplitFlowCallbackHandler(
             return
         }
         assignPendingParticipant(context, flow, memberId)
+    }
+
+    private suspend fun enterFromPendingList(context: CallbackContext) {
+        val promptMessageId = context.data.removePrefix(PENDING_ENTER_PREFIX).toLongOrNull()
+        val flow = promptMessageId?.let { splitStateStore.find(context.chatId, it) } as? PendingSplit
+        if (flow == null) {
+            telegramApi.answerCallbackQuery(context.callbackQueryId, "This split is no longer active.", showAlert = true)
+            return
+        }
+        if (context.memberId !in flow.participantIds) {
+            telegramApi.answerCallbackQuery(context.callbackQueryId, "You're not part of this split.", showAlert = true)
+            return
+        }
+        assignPendingParticipant(context, flow, context.memberId)
     }
 
     private suspend fun assignPendingParticipant(
