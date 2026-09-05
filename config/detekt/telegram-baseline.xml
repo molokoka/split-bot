@@ -56,9 +56,6 @@
     <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$shares = listOf(ExpenseShare(aliceId, BigDecimal("10.00")), ExpenseShare(bobbyId, BigDecimal("10.00")))</ID>
     <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$shares = listOf(ExpenseShare(aliceId, BigDecimal("30.00")), ExpenseShare(bobbyId, BigDecimal("60.00")))</ID>
     <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$shares = listOf(ExpenseShare(aliceId, BigDecimal("60.00")), ExpenseShare(bobbyId, BigDecimal("40.00")))</ID>
-    <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$telegramApi.sentRichMessages.last().second.blocks shouldBe listOf(RichBlockParagraph("No pending splits."))</ID>
-    <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$telegramApi.sentRichMessages.single().second.blocks shouldBe listOf(RichBlockParagraph("No pending splits."))</ID>
-    <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$val command = ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)</ID>
     <ID>MaxLineLength:HelpCommandSpec.kt$HelpCommandSpec$val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)</ID>
     <ID>MaxLineLength:HistoryCommandSpec.kt$HistoryCommandSpec$InputRichMessage(blocks = listOf(RichBlockParagraph("No history yet — use /split or /settle to get started.")))</ID>
     <ID>MaxLineLength:HistoryCommandSpec.kt$HistoryCommandSpec$RichBlockTableCell("2026-08-27 · dinner — @alice paid 90.00 USD")</ID>

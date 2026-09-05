@@ -408,7 +408,8 @@ class SplitFlowCallbackHandlerSpec :
                 val fixture = CallbackFixture(db)
                 val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
                 fixture.setFlow(
-                    fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId))
+                    fixture
+                        .anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId))
                         .copy(amountsEntered = mapOf(bobId to BigDecimal("40.00"))),
                 )
 

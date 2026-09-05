@@ -137,28 +137,30 @@ class SplitFlowFormattingSpec :
         }
 
         "buildPendingSplitsMessage lists each flow's description, amount, and per-participant status" {
-            val flow = PendingSplit(
-                invokerId = alice.id,
-                groupId = split.core.GroupId("g1"),
-                amount = BigDecimal("90.00"),
-                currency = "USD",
-                description = "dinner",
-                participantIds = listOf(alice.id, bob.id),
-                promptMessageId = 1,
-                stage = SplitFlowStage.ENTERING_AMOUNTS,
-                amountsEntered = mapOf(alice.id to BigDecimal("50.00")),
-            )
+            val flow =
+                PendingSplit(
+                    invokerId = alice.id,
+                    groupId = split.core.GroupId("g1"),
+                    amount = BigDecimal("90.00"),
+                    currency = "USD",
+                    description = "dinner",
+                    participantIds = listOf(alice.id, bob.id),
+                    promptMessageId = 1,
+                    stage = SplitFlowStage.ENTERING_AMOUNTS,
+                    amountsEntered = mapOf(alice.id to BigDecimal("50.00")),
+                )
 
             val message = buildPendingSplitsMessage(listOf(flow), listOf(alice, bob), emptyMap())
 
             val rows = (message.blocks.single() as RichBlockTable).cells
-            rows shouldBe listOf(
-                listOf(RichBlockTableCell("Split", isHeader = true), RichBlockTableCell("Status", isHeader = true)),
+            rows shouldBe
                 listOf(
-                    RichBlockTableCell("dinner\n90.00 USD"),
-                    RichBlockTableCell("Alice 50.00 USD\nBob —"),
-                ),
-            )
+                    listOf(RichBlockTableCell("Split", isHeader = true), RichBlockTableCell("Status", isHeader = true)),
+                    listOf(
+                        RichBlockTableCell("dinner\n90.00 USD"),
+                        RichBlockTableCell("Alice 50.00 USD\nBob —"),
+                    ),
+                )
         }
 
         "buildPendingSplitsMessage says so when there's nothing open" {
@@ -168,22 +170,24 @@ class SplitFlowFormattingSpec :
         }
 
         "pendingSplitsKeyboard has one button per flow, encoding its prompt message id" {
-            val dinner = PendingSplit(
-                invokerId = alice.id,
-                groupId = split.core.GroupId("g1"),
-                amount = BigDecimal("90.00"),
-                currency = "USD",
-                description = "dinner",
-                participantIds = listOf(alice.id, bob.id),
-                promptMessageId = 7,
-                stage = SplitFlowStage.ENTERING_AMOUNTS,
-            )
+            val dinner =
+                PendingSplit(
+                    invokerId = alice.id,
+                    groupId = split.core.GroupId("g1"),
+                    amount = BigDecimal("90.00"),
+                    currency = "USD",
+                    description = "dinner",
+                    participantIds = listOf(alice.id, bob.id),
+                    promptMessageId = 7,
+                    stage = SplitFlowStage.ENTERING_AMOUNTS,
+                )
 
             pendingSplitsKeyboard(listOf(dinner)) shouldBe
                 InlineKeyboardMarkup(
-                    inlineKeyboard = listOf(
-                        listOf(InlineKeyboardButton(text = "Enter your amount — dinner", callbackData = "pending:enter:7")),
-                    ),
+                    inlineKeyboard =
+                        listOf(
+                            listOf(InlineKeyboardButton(text = "Enter your amount — dinner", callbackData = "pending:enter:7")),
+                        ),
                 )
         }
     })

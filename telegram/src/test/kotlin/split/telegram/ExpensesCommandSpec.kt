@@ -299,7 +299,8 @@ class ExpensesCommandSpec :
                 val groupId = resolver.resolveGroup("-100001")
                 resolver.ensureGroupMembership(groupId, aliceId)
                 val telegramApi = FakeTelegramApi()
-                val command = ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
+                val command =
+                    ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
                 splitStateStore.set(
                     -100001,
                     PendingSplit(
@@ -333,11 +334,14 @@ class ExpensesCommandSpec :
                 val groupId = resolver.resolveGroup("-100001")
                 resolver.ensureGroupMembership(groupId, aliceId)
                 val telegramApi = FakeTelegramApi()
-                val command = ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
+                val command =
+                    ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
 
                 command.handle(CommandContext(-100001, aliceId, "1", groupId, "pending"))
 
-                telegramApi.sentRichMessages.single().second.blocks shouldBe listOf(RichBlockParagraph("No pending splits."))
+                telegramApi.sentRichMessages
+                    .single()
+                    .second.blocks shouldBe listOf(RichBlockParagraph("No pending splits."))
             }
         }
 
@@ -353,27 +357,31 @@ class ExpensesCommandSpec :
                 val groupId = resolver.resolveGroup("-100001")
                 resolver.ensureGroupMembership(groupId, aliceId)
                 val telegramApi = FakeTelegramApi()
-                val command = ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
+                val command =
+                    ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
                 val callbackHandler =
                     SplitFlowCallbackHandler(splitStateStore, memberRepository, expenseRepository, platformDirectory, telegramApi)
-                val flow = PendingSplit(
-                    invokerId = aliceId,
-                    groupId = groupId,
-                    amount = BigDecimal("90.00"),
-                    currency = "USD",
-                    description = "dinner",
-                    participantIds = listOf(aliceId),
-                    promptMessageId = 1,
-                    stage = SplitFlowStage.ENTERING_AMOUNTS,
-                    actionsMessageId = 2,
-                    amountsEntered = mapOf(aliceId to BigDecimal("90.00")),
-                )
+                val flow =
+                    PendingSplit(
+                        invokerId = aliceId,
+                        groupId = groupId,
+                        amount = BigDecimal("90.00"),
+                        currency = "USD",
+                        description = "dinner",
+                        participantIds = listOf(aliceId),
+                        promptMessageId = 1,
+                        stage = SplitFlowStage.ENTERING_AMOUNTS,
+                        actionsMessageId = 2,
+                        amountsEntered = mapOf(aliceId to BigDecimal("90.00")),
+                    )
                 splitStateStore.set(-100001, flow)
 
                 callbackHandler.handle(CallbackContext(-100001, aliceId, groupId, "cbq", 2, SPLIT_CONFIRM_DATA))
                 command.handle(CommandContext(-100001, aliceId, "1", groupId, "pending"))
 
-                telegramApi.sentRichMessages.last().second.blocks shouldBe listOf(RichBlockParagraph("No pending splits."))
+                telegramApi.sentRichMessages
+                    .last()
+                    .second.blocks shouldBe listOf(RichBlockParagraph("No pending splits."))
             }
         }
     })
