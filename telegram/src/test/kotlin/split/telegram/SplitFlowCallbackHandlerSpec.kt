@@ -261,6 +261,82 @@ class SplitFlowCallbackHandlerSpec :
             }
         }
 
+        "a participant can pick their own row to answer out of turn, before auto-advance reaches them" {
+            withTestDatabase { db ->
+                val fixture = CallbackFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
+                val flow =
+                    fixture
+                        .anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId))
+                        .copy(pendingParticipantId = aliceId, pendingPromptMessageId = 3)
+                fixture.setFlow(flow)
+
+                fixture.handler.handle(CallbackContext(CALLBACK_CHAT_ID, bobId, groupId, "cbq", 1, splitPickData(1)))
+
+                val updated = fixture.currentFlow()!!
+                updated.pendingParticipantId shouldBe bobId
+                updated.pendingIsAutoAdvance shouldBe false
+            }
+        }
+
+        "a participant picking someone else's row is rejected" {
+            withTestDatabase { db ->
+                val fixture = CallbackFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
+                val flow =
+                    fixture
+                        .anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId))
+                        .copy(pendingParticipantId = aliceId, pendingPromptMessageId = 3)
+                fixture.setFlow(flow)
+
+                fixture.handler.handle(CallbackContext(CALLBACK_CHAT_ID, bobId, groupId, "cbq", 1, splitPickData(0)))
+
+                fixture.currentFlow()!!.pendingParticipantId shouldBe aliceId
+                fixture.telegramApi.answeredCallbacks
+                    .last()
+                    .second shouldBe
+                    "Only the person who started this split, or that participant, can do that."
+            }
+        }
+
+        "mode choice, cancel, and confirm still reject a non-invoker" {
+            withTestDatabase { db ->
+                val fixture = CallbackFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
+                fixture.setFlow(fixture.aChoosingModeFlow(aliceId, groupId, listOf(aliceId, bobId)))
+
+                fixture.handler.handle(
+                    CallbackContext(CALLBACK_CHAT_ID, bobId, groupId, "cbq", 1, SPLIT_MODE_EQUAL_DATA),
+                )
+
+                fixture.expenseRepository.listActive(groupId) shouldBe emptyList()
+                fixture.telegramApi.answeredCallbacks
+                    .last()
+                    .second shouldBe
+                    "Only the person who started this split can do that."
+            }
+        }
+
+        "a participant can pick their own row again after auto-advance has moved past them, to correct it" {
+            withTestDatabase { db ->
+                val fixture = CallbackFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
+                val flow =
+                    fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId)).copy(
+                        amountsEntered = mapOf(bobId to BigDecimal("40.00")),
+                        pendingParticipantId = null,
+                        pendingPromptMessageId = null,
+                    )
+                fixture.setFlow(flow)
+
+                fixture.handler.handle(CallbackContext(CALLBACK_CHAT_ID, bobId, groupId, "cbq", 1, splitPickData(1)))
+
+                val updated = fixture.currentFlow()!!
+                updated.pendingParticipantId shouldBe bobId
+                updated.amountsEntered shouldBe mapOf(bobId to BigDecimal("40.00"))
+            }
+        }
+
         "a callback from someone other than the invoker is rejected" {
             withTestDatabase { db ->
                 val fixture = CallbackFixture(db)

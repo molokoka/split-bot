@@ -1,5 +1,6 @@
 package split.telegram
 
+import split.core.MemberId
 import split.core.MemberRepository
 import split.core.PlatformDirectory
 
@@ -13,8 +14,8 @@ class SplitFlowReplyHandler(
         val flow = splitStateStore.find(context.chatId, context.replyToMessageId) as? PendingSplit ?: return
         if (flow.stage != SplitFlowStage.ENTERING_AMOUNTS) return
         if (context.replyToMessageId != flow.pendingPromptMessageId) return
-        if (context.memberId != flow.invokerId) return
         val pendingParticipantId = flow.pendingParticipantId ?: return
+        if (!isAuthorizedToReply(context.memberId, flow.invokerId, pendingParticipantId)) return
 
         val amount = context.text.trim().toBigDecimalOrNull()
         if (amount == null || amount.scale() > 2 || amount.signum() <= 0) {
@@ -74,4 +75,10 @@ class SplitFlowReplyHandler(
             }
         splitStateStore.set(context.chatId, updatedFlow)
     }
+
+    private fun isAuthorizedToReply(
+        memberId: MemberId,
+        invokerId: MemberId,
+        pendingParticipantId: MemberId,
+    ): Boolean = memberId == invokerId || memberId == pendingParticipantId
 }

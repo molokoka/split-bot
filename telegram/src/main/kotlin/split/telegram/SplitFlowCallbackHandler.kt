@@ -3,6 +3,7 @@ package split.telegram
 import split.core.Expense
 import split.core.ExpenseId
 import split.core.ExpenseRepository
+import split.core.MemberId
 import split.core.MemberRepository
 import split.core.PlatformDirectory
 import split.core.SplitType
@@ -27,15 +28,6 @@ class SplitFlowCallbackHandler(
             telegramApi.answerCallbackQuery(context.callbackQueryId, "This split is no longer active.", showAlert = true)
             return
         }
-        if (context.memberId != flow.invokerId) {
-            telegramApi.answerCallbackQuery(
-                context.callbackQueryId,
-                "Only the person who started this split can do that.",
-                showAlert = true,
-            )
-            return
-        }
-
         when {
             context.data == SPLIT_MODE_EQUAL_DATA && flow.stage == SplitFlowStage.CHOOSING_MODE -> chooseEqual(context, flow)
             context.data == SPLIT_MODE_EXACT_DATA && flow.stage == SplitFlowStage.CHOOSING_MODE -> chooseExact(context, flow)
@@ -46,10 +38,24 @@ class SplitFlowCallbackHandler(
         }
     }
 
+    private suspend fun requireInvoker(
+        context: CallbackContext,
+        flow: PendingSplit,
+    ): Boolean {
+        if (context.memberId == flow.invokerId) return true
+        telegramApi.answerCallbackQuery(
+            context.callbackQueryId,
+            "Only the person who started this split can do that.",
+            showAlert = true,
+        )
+        return false
+    }
+
     private suspend fun chooseEqual(
         context: CallbackContext,
         flow: PendingSplit,
     ) {
+        if (!requireInvoker(context, flow)) return
         val (members, usernames) = membersAndUsernames(flow)
         val shares = resolveEqualSplit(flow.amount, flow.invokerId, flow.participantIds)
         val expense = createExpense(flow, SplitType.EQUAL, shares)
@@ -63,6 +69,7 @@ class SplitFlowCallbackHandler(
         context: CallbackContext,
         flow: PendingSplit,
     ) {
+        if (!requireInvoker(context, flow)) return
         val (members, usernames) = membersAndUsernames(flow)
         val nameOf = members.associateBy { it.id }
 
@@ -102,6 +109,22 @@ class SplitFlowCallbackHandler(
             telegramApi.answerCallbackQuery(context.callbackQueryId, "This split is no longer active.", showAlert = true)
             return
         }
+        if (context.memberId != flow.invokerId && context.memberId != memberId) {
+            telegramApi.answerCallbackQuery(
+                context.callbackQueryId,
+                "Only the person who started this split, or that participant, can do that.",
+                showAlert = true,
+            )
+            return
+        }
+        assignPendingParticipant(context, flow, memberId)
+    }
+
+    private suspend fun assignPendingParticipant(
+        context: CallbackContext,
+        flow: PendingSplit,
+        memberId: MemberId,
+    ) {
         flow.pendingPromptMessageId?.let { telegramApi.deleteMessage(context.chatId, it) }
         val (members, usernames) = membersAndUsernames(flow)
         val promptMessageId = sendParticipantAmountPrompt(context.chatId, memberId, members, usernames, telegramApi)
@@ -116,6 +139,7 @@ class SplitFlowCallbackHandler(
         context: CallbackContext,
         flow: PendingSplit,
     ) {
+        if (!requireInvoker(context, flow)) return
         flow.pendingPromptMessageId?.let { telegramApi.deleteMessage(context.chatId, it) }
         telegramApi.editMessageText(context.chatId, flow.promptMessageId, "Split cancelled.")
         flow.actionsMessageId?.let { telegramApi.editMessageText(context.chatId, it, "Split cancelled.") }
@@ -127,6 +151,7 @@ class SplitFlowCallbackHandler(
         context: CallbackContext,
         flow: PendingSplit,
     ) {
+        if (!requireInvoker(context, flow)) return
         val shares =
             try {
                 resolveExactSplit(flow.amount, flow.amountsEntered)

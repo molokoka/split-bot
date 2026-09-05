@@ -227,7 +227,7 @@ class SplitFlowReplyHandlerSpec :
                         aliceId,
                         groupId,
                         listOf(aliceId, bobId),
-                        pendingParticipantId = bobId,
+                        pendingParticipantId = aliceId,
                     )
                 fixture.setFlow(pending)
 
@@ -249,6 +249,60 @@ class SplitFlowReplyHandlerSpec :
                 fixture.reply(aliceId, groupId, replyToMessageId = 999, text = "40")
 
                 fixture.currentFlow() shouldBe pending
+            }
+        }
+
+        "a named participant who isn't the invoker can answer their own auto-advanced prompt" {
+            withTestDatabase { db ->
+                val fixture = ReplyFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
+                val flow =
+                    PendingSplit(
+                        invokerId = aliceId,
+                        groupId = groupId,
+                        amount = BigDecimal("90.00"),
+                        currency = "USD",
+                        description = "dinner",
+                        participantIds = listOf(aliceId, bobId),
+                        promptMessageId = 1,
+                        stage = SplitFlowStage.ENTERING_AMOUNTS,
+                        actionsMessageId = 2,
+                        pendingParticipantId = bobId,
+                        pendingPromptMessageId = 3,
+                    )
+                fixture.setFlow(flow)
+
+                fixture.handler.handle(ReplyContext(REPLY_CHAT_ID, bobId, groupId, 3, "45.00"))
+
+                (fixture.currentFlow() as PendingSplit).amountsEntered shouldBe mapOf(bobId to BigDecimal("45.00"))
+            }
+        }
+
+        "a reply from someone who is neither the invoker nor the pending participant is ignored" {
+            withTestDatabase { db ->
+                val fixture = ReplyFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
+                val carolId = fixture.resolver.resolveMember("3", "carol", "Carol")
+                fixture.resolver.ensureGroupMembership(groupId, carolId)
+                val flow =
+                    PendingSplit(
+                        invokerId = aliceId,
+                        groupId = groupId,
+                        amount = BigDecimal("90.00"),
+                        currency = "USD",
+                        description = "dinner",
+                        participantIds = listOf(aliceId, bobId, carolId),
+                        promptMessageId = 1,
+                        stage = SplitFlowStage.ENTERING_AMOUNTS,
+                        actionsMessageId = 2,
+                        pendingParticipantId = bobId,
+                        pendingPromptMessageId = 3,
+                    )
+                fixture.setFlow(flow)
+
+                fixture.handler.handle(ReplyContext(REPLY_CHAT_ID, carolId, groupId, 3, "45.00"))
+
+                (fixture.currentFlow() as PendingSplit).amountsEntered shouldBe emptyMap()
             }
         }
 
