@@ -7,3 +7,4 @@ gradle/gradle-daemon-jvm.properties
 .env
 split-manual-test.db*
 bot-run.log
+*.local.md
