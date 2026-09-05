@@ -9,6 +9,7 @@ import split.storage.ExposedExpenseRepository
 import split.storage.ExposedGroupRepository
 import split.storage.ExposedMemberRepository
 import split.storage.ExposedPlatformDirectory
+import split.storage.ExposedSplitFlowStateRepository
 import java.math.BigDecimal
 
 private const val DRAFT_CHAT_ID = -100L
@@ -22,7 +23,7 @@ private class DraftFixture(
     val expenseRepository = ExposedExpenseRepository(db)
     val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
     val telegramApi = FakeTelegramApi()
-    val splitStateStore = SplitStateStore()
+    val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
     val flowStarter =
         SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
     val splitCommand =
@@ -67,9 +68,11 @@ private suspend fun DraftFixture.startSplit(
     args: String,
 ) = splitCommand.handle(CommandContext(DRAFT_CHAT_ID, memberId, "1", groupId, args))
 
-private fun DraftFixture.currentDraft() = splitStateStore.get(DRAFT_CHAT_ID) as? PendingSplitDraft
+private suspend fun DraftFixture.currentDraft() =
+    splitStateStore.listAll(DRAFT_CHAT_ID).filterIsInstance<PendingSplitDraft>().singleOrNull()
 
-private fun DraftFixture.currentFlow() = splitStateStore.get(DRAFT_CHAT_ID) as? PendingSplit
+private suspend fun DraftFixture.currentFlow() =
+    splitStateStore.listAll(DRAFT_CHAT_ID).filterIsInstance<PendingSplit>().singleOrNull()
 
 private suspend fun DraftFixture.answer(
     memberId: MemberId,
@@ -163,7 +166,7 @@ class SplitDraftReplyHandlerSpec :
                 fixture.startSplit(aliceId, groupId, "dinner")
                 fixture.answerAsInvoker(aliceId, groupId, "90 EUR")
 
-                fixture.currentDraft()?.amount shouldBe BigDecimal("90")
+                fixture.currentDraft()?.amount shouldBe BigDecimal("90.00")
                 fixture.currentDraft()?.currency shouldBe "EUR"
                 fixture.currentDraft()?.awaiting shouldBe SplitDraftField.PARTICIPANTS
             }

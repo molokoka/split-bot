@@ -9,6 +9,7 @@ import split.storage.ExposedExpenseRepository
 import split.storage.ExposedGroupRepository
 import split.storage.ExposedMemberRepository
 import split.storage.ExposedPlatformDirectory
+import split.storage.ExposedSplitFlowStateRepository
 import java.math.BigDecimal
 
 private const val CALLBACK_CHAT_ID = -100L
@@ -22,7 +23,7 @@ private class CallbackFixture(
     val expenseRepository = ExposedExpenseRepository(db)
     val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
     val telegramApi = FakeTelegramApi()
-    val splitStateStore = SplitStateStore()
+    val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
     val handler =
         SplitFlowCallbackHandler(splitStateStore, memberRepository, expenseRepository, platformDirectory, telegramApi)
 }
@@ -78,9 +79,10 @@ private fun CallbackFixture.anEnteringAmountsFlow(
     actionsMessageId = 2,
 )
 
-private fun CallbackFixture.setFlow(flow: PendingSplit) = splitStateStore.set(CALLBACK_CHAT_ID, flow)
+private suspend fun CallbackFixture.setFlow(flow: PendingSplit) = splitStateStore.set(CALLBACK_CHAT_ID, flow)
 
-private fun CallbackFixture.currentFlow() = splitStateStore.get(CALLBACK_CHAT_ID) as? PendingSplit
+private suspend fun CallbackFixture.currentFlow() =
+    splitStateStore.listAll(CALLBACK_CHAT_ID).filterIsInstance<PendingSplit>().singleOrNull()
 
 private suspend fun CallbackFixture.expenseCreatedWith(
     groupId: GroupId,

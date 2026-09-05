@@ -14,8 +14,7 @@ class SplitDraftReplyHandler(
     private val flowStarter: SplitFlowStarter,
 ) {
     suspend fun handle(context: ReplyContext) {
-        val draft = splitStateStore.get(context.chatId) as? PendingSplitDraft ?: return
-        if (context.replyToMessageId != draft.promptMessageId) return
+        val draft = splitStateStore.find(context.chatId, context.replyToMessageId) as? PendingSplitDraft ?: return
         if (context.memberId != draft.invokerId) return
 
         when (draft.awaiting) {
@@ -89,6 +88,7 @@ class SplitDraftReplyHandler(
                     context.chatId,
                     splitDraftPromptText(nextField, updated.currency, knownUsernames),
                 )
+            splitStateStore.clear(context.chatId, updated)
             splitStateStore.set(context.chatId, updated.copy(awaiting = nextField, promptMessageId = promptMessageId))
             return
         }
@@ -105,7 +105,7 @@ class SplitDraftReplyHandler(
             }
             mentionedMemberIds += participantId
         }
-        splitStateStore.clear(context.chatId)
+        splitStateStore.clear(context.chatId, updated)
         flowStarter.start(
             chatId = context.chatId,
             invokerId = updated.invokerId,

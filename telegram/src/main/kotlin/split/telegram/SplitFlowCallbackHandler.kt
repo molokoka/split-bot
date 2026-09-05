@@ -22,12 +22,8 @@ class SplitFlowCallbackHandler(
     private val clock: Clock = Clock.systemUTC(),
 ) {
     suspend fun handle(context: CallbackContext) {
-        val flow = splitStateStore.get(context.chatId) as? PendingSplit
+        val flow = splitStateStore.find(context.chatId, context.messageId) as? PendingSplit
         if (flow == null) {
-            telegramApi.answerCallbackQuery(context.callbackQueryId, "This split is no longer active.", showAlert = true)
-            return
-        }
-        if (context.messageId != flow.promptMessageId && context.messageId != flow.actionsMessageId) {
             telegramApi.answerCallbackQuery(context.callbackQueryId, "This split is no longer active.", showAlert = true)
             return
         }
@@ -57,7 +53,7 @@ class SplitFlowCallbackHandler(
         val (members, usernames) = membersAndUsernames(flow)
         val shares = resolveEqualSplit(flow.amount, flow.invokerId, flow.participantIds)
         val expense = createExpense(flow, SplitType.EQUAL, shares)
-        splitStateStore.clear(context.chatId)
+        splitStateStore.clear(context.chatId, flow)
 
         telegramApi.editMessageText(context.chatId, flow.promptMessageId, formatExpenseConfirmation(expense, members, usernames))
         telegramApi.answerCallbackQuery(context.callbackQueryId)
@@ -123,7 +119,7 @@ class SplitFlowCallbackHandler(
         flow.pendingPromptMessageId?.let { telegramApi.deleteMessage(context.chatId, it) }
         telegramApi.editMessageText(context.chatId, flow.promptMessageId, "Split cancelled.")
         flow.actionsMessageId?.let { telegramApi.editMessageText(context.chatId, it, "Split cancelled.") }
-        splitStateStore.clear(context.chatId)
+        splitStateStore.clear(context.chatId, flow)
         telegramApi.answerCallbackQuery(context.callbackQueryId)
     }
 
@@ -140,7 +136,7 @@ class SplitFlowCallbackHandler(
             }
         val (members, usernames) = membersAndUsernames(flow)
         val expense = createExpense(flow, SplitType.EXACT, shares)
-        splitStateStore.clear(context.chatId)
+        splitStateStore.clear(context.chatId, flow)
 
         telegramApi.editMessageText(context.chatId, flow.promptMessageId, formatExpenseConfirmation(expense, members, usernames))
         flow.actionsMessageId?.let {

@@ -9,6 +9,7 @@ import split.storage.ExposedExpenseRepository
 import split.storage.ExposedGroupRepository
 import split.storage.ExposedMemberRepository
 import split.storage.ExposedPlatformDirectory
+import split.storage.ExposedSplitFlowStateRepository
 import java.math.BigDecimal
 
 private const val COMMAND_CHAT_ID = -100L
@@ -22,7 +23,7 @@ private class CommandFixture(
     val expenseRepository = ExposedExpenseRepository(db)
     val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
     val telegramApi = FakeTelegramApi()
-    val splitStateStore = SplitStateStore()
+    val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
     val flowStarter =
         SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
     val command =
@@ -73,11 +74,11 @@ private suspend fun CommandFixture.sendSplit(
     args: String,
 ) = command.handle(CommandContext(COMMAND_CHAT_ID, memberId, "1", groupId, args))
 
-private fun CommandFixture.currentState() = splitStateStore.get(COMMAND_CHAT_ID)
+private suspend fun CommandFixture.currentState() = splitStateStore.listAll(COMMAND_CHAT_ID).singleOrNull()
 
-private fun CommandFixture.currentDraft() = currentState() as? PendingSplitDraft
+private suspend fun CommandFixture.currentDraft() = currentState() as? PendingSplitDraft
 
-private fun CommandFixture.currentFlow() = currentState() as? PendingSplit
+private suspend fun CommandFixture.currentFlow() = currentState() as? PendingSplit
 
 class SplitExpenseCommandSpec :
     StringSpec({

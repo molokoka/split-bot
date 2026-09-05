@@ -8,6 +8,7 @@ import split.core.MemberId
 import split.storage.ExposedGroupRepository
 import split.storage.ExposedMemberRepository
 import split.storage.ExposedPlatformDirectory
+import split.storage.ExposedSplitFlowStateRepository
 import java.math.BigDecimal
 
 private const val REPLY_CHAT_ID = -100L
@@ -21,7 +22,7 @@ private class ReplyFixture(
     val memberRepository = ExposedMemberRepository(db)
     val resolver = IdentityResolver(platformDirectory, memberRepository, ExposedGroupRepository(db))
     val telegramApi = FakeTelegramApi()
-    val splitStateStore = SplitStateStore()
+    val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
     val handler = SplitFlowReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi)
 }
 
@@ -71,9 +72,9 @@ private fun ReplyFixture.anEnteringAmountsFlow(
     pendingPromptMessageId = pendingPromptMessageId,
 )
 
-private fun ReplyFixture.setFlow(flow: PendingSplit) = splitStateStore.set(REPLY_CHAT_ID, flow)
+private suspend fun ReplyFixture.setFlow(flow: PendingSplit) = splitStateStore.set(REPLY_CHAT_ID, flow)
 
-private fun ReplyFixture.currentFlow() = splitStateStore.get(REPLY_CHAT_ID)
+private suspend fun ReplyFixture.currentFlow() = splitStateStore.listAll(REPLY_CHAT_ID).singleOrNull()
 
 private suspend fun ReplyFixture.reply(
     memberId: MemberId,
@@ -114,7 +115,7 @@ class SplitFlowReplyHandlerSpec :
                 fixture.reply(aliceId, groupId, replyToMessageId = 3, text = "40")
 
                 val flow = fixture.currentFlow() as? PendingSplit
-                flow?.amountsEntered shouldBe mapOf(bobId to BigDecimal("40"))
+                flow?.amountsEntered shouldBe mapOf(bobId to BigDecimal("40.00"))
                 flow?.pendingParticipantId shouldBe aliceId
                 fixture.telegramApi.sentForceReplyPrompts
                     .single()
@@ -147,7 +148,7 @@ class SplitFlowReplyHandlerSpec :
                 fixture.reply(aliceId, groupId, replyToMessageId = 3, text = "40")
 
                 val flow = fixture.currentFlow() as? PendingSplit
-                flow?.amountsEntered shouldBe mapOf(bobId to BigDecimal("40"))
+                flow?.amountsEntered shouldBe mapOf(bobId to BigDecimal("40.00"))
                 flow?.pendingParticipantId shouldBe null
                 flow?.pendingPromptMessageId shouldBe null
                 fixture.telegramApi.sentForceReplyPrompts shouldBe emptyList()
@@ -165,7 +166,7 @@ class SplitFlowReplyHandlerSpec :
                 fixture.reply(aliceId, groupId, replyToMessageId = 3, text = "90")
 
                 val flow = fixture.currentFlow() as? PendingSplit
-                flow?.amountsEntered shouldBe mapOf(aliceId to BigDecimal("90"))
+                flow?.amountsEntered shouldBe mapOf(aliceId to BigDecimal("90.00"))
                 flow?.pendingParticipantId shouldBe null
                 flow?.pendingPromptMessageId shouldBe null
                 fixture.telegramApi.sentForceReplyPrompts shouldBe emptyList()

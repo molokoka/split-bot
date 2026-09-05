@@ -5,6 +5,7 @@ import split.storage.ExposedGroupRepository
 import split.storage.ExposedMemberRepository
 import split.storage.ExposedPlatformDirectory
 import split.storage.ExposedSettlementRepository
+import split.storage.ExposedSplitFlowStateRepository
 import split.storage.connectDatabaseFromEnv
 
 class PollLoop(
@@ -46,7 +47,7 @@ suspend fun main() {
 
     val telegramApi = HttpTelegramApi(botToken)
     val identityResolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
-    val splitStateStore = SplitStateStore()
+    val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
     val flowStarter = SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
     val splitFlowCallbackHandler =
         SplitFlowCallbackHandler(
@@ -124,21 +125,14 @@ suspend fun main() {
             handlers,
             callbackHandler = splitFlowCallbackHandler::handle,
             replyHandler = { context ->
-                when (splitStateStore.get(context.chatId)) {
+                when (splitStateStore.find(context.chatId, context.replyToMessageId)) {
                     is PendingSplitDraft -> splitDraftReplyHandler.handle(context)
                     is PendingSplit -> splitFlowReplyHandler.handle(context)
                     null -> {}
                 }
             },
             isTrackedReply = { chatId, messageId ->
-                when (val state = splitStateStore.get(chatId)) {
-                    is PendingSplitDraft -> state.promptMessageId == messageId
-                    is PendingSplit ->
-                        state.promptMessageId == messageId ||
-                            state.actionsMessageId == messageId ||
-                            state.pendingPromptMessageId == messageId
-                    null -> false
-                }
+                splitStateStore.find(chatId, messageId) != null
             },
         )
     val pollLoop = PollLoop(telegramApi, router)

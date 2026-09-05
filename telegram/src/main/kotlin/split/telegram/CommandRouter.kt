@@ -37,7 +37,7 @@ class CommandRouter(
     private val handlers: Map<String, CommandHandler>,
     private val callbackHandler: CallbackHandler? = null,
     private val replyHandler: ReplyHandler? = null,
-    private val isTrackedReply: (chatId: Long, messageId: Long) -> Boolean = { _, _ -> false },
+    private val isTrackedReply: suspend (chatId: Long, messageId: Long) -> Boolean = { _, _ -> false },
 ) {
     suspend fun handleUpdate(update: TgUpdate) {
         val callbackQuery = update.callbackQuery

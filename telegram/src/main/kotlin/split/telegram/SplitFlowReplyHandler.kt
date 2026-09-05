@@ -10,7 +10,7 @@ class SplitFlowReplyHandler(
     private val telegramApi: TelegramApi,
 ) {
     suspend fun handle(context: ReplyContext) {
-        val flow = splitStateStore.get(context.chatId) as? PendingSplit ?: return
+        val flow = splitStateStore.find(context.chatId, context.replyToMessageId) as? PendingSplit ?: return
         if (flow.stage != SplitFlowStage.ENTERING_AMOUNTS) return
         if (context.replyToMessageId != flow.pendingPromptMessageId) return
         if (context.memberId != flow.invokerId) return

@@ -9,6 +9,7 @@ import split.storage.ExposedExpenseRepository
 import split.storage.ExposedGroupRepository
 import split.storage.ExposedMemberRepository
 import split.storage.ExposedPlatformDirectory
+import split.storage.ExposedSplitFlowStateRepository
 import java.math.BigDecimal
 
 private const val CHAT_ID = -100L
@@ -22,7 +23,7 @@ private class FlowFixture(
     val expenseRepository = ExposedExpenseRepository(db)
     val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
     val telegramApi = FakeTelegramApi()
-    val splitStateStore = SplitStateStore()
+    val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
     val flowStarter =
         SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
     val splitCommand =
@@ -54,7 +55,8 @@ private suspend fun FlowFixture.startSplit(
     args: String,
 ) = splitCommand.handle(CommandContext(CHAT_ID, memberId, "1", groupId, args))
 
-private fun FlowFixture.currentFlow() = splitStateStore.get(CHAT_ID) as? PendingSplit
+private suspend fun FlowFixture.currentFlow() =
+    splitStateStore.listAll(CHAT_ID).filterIsInstance<PendingSplit>().singleOrNull()
 
 private suspend fun FlowFixture.tapEqual(
     memberId: MemberId,
@@ -194,28 +196,69 @@ class SplitFlowSpec :
                 fixture.replyWithAmount(aliceId, groupId, aliceSecondPromptId, "60")
 
                 amountsEntered = fixture.currentFlow()!!.amountsEntered
-                amountsEntered shouldBe mapOf(aliceId to BigDecimal("60"), bobId to BigDecimal("40"))
+                amountsEntered shouldBe mapOf(aliceId to BigDecimal("60.00"), bobId to BigDecimal("40.00"))
                 splitIsReadyToConfirm(participantIds, amountsEntered, BigDecimal("90.00")) shouldBe false
             }
         }
 
-        "a second /split replaces the first, still-pending flow" {
+        "a second /split coexists with the first, still-pending flow" {
             withTestDatabase { db ->
                 val fixture = FlowFixture(db)
-                val (aliceId, _, groupId) = fixture.aliceAndBobbyInGroup()
+                val (aliceId, bobbyId, groupId) = fixture.aliceAndBobbyInGroup()
 
                 fixture.startSplit(aliceId, groupId, "30 coffee @bobby")
-                val firstPromptMessageId = fixture.currentFlow()!!.promptMessageId
+                val coffeePromptMessageId =
+                    (fixture.splitStateStore.listAll(CHAT_ID).single() as PendingSplit).promptMessageId
 
                 fixture.startSplit(aliceId, groupId, "90 dinner @bobby")
-                val secondFlow = fixture.currentFlow()!!
-                secondFlow.promptMessageId shouldBe firstPromptMessageId + 1
-                secondFlow.description shouldBe "dinner"
+                val dinnerFlow = fixture.splitStateStore.listAll(CHAT_ID)
+                    .filterIsInstance<PendingSplit>()
+                    .single { it.promptMessageId != coffeePromptMessageId }
+                dinnerFlow.description shouldBe "dinner"
 
-                fixture.tapEqual(aliceId, groupId, firstPromptMessageId)
+                fixture.tapEqual(aliceId, groupId, coffeePromptMessageId)
 
-                fixture.expenseRepository.listActive(groupId) shouldBe emptyList()
-                fixture.currentFlow()?.description shouldBe "dinner"
+                fixture.expenseCreatedWith(groupId, aliceId to BigDecimal("15.00"), bobbyId to BigDecimal("15.00"))
+                (fixture.splitStateStore.find(CHAT_ID, dinnerFlow.promptMessageId) as PendingSplit)
+                    .description shouldBe "dinner"
+            }
+        }
+
+        "cancelling one of two concurrent flows leaves the other's amounts untouched" {
+            withTestDatabase { db ->
+                val fixture = FlowFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobbyInGroup()
+
+                fixture.startSplit(aliceId, groupId, "30 coffee @bobby")
+                val coffeePromptMessageId =
+                    (fixture.splitStateStore.listAll(CHAT_ID).single() as PendingSplit).promptMessageId
+                fixture.tapExact(aliceId, groupId, coffeePromptMessageId)
+                fixture.pick(
+                    participantIndex = 0,
+                    memberId = aliceId,
+                    groupId = groupId,
+                    messageId = coffeePromptMessageId,
+                )
+                val coffeeAlicePromptId =
+                    (fixture.splitStateStore.find(CHAT_ID, coffeePromptMessageId) as PendingSplit)
+                        .pendingPromptMessageId!!
+                fixture.replyWithAmount(aliceId, groupId, coffeeAlicePromptId, "15")
+
+                fixture.startSplit(aliceId, groupId, "90 dinner @bobby")
+                val dinnerPromptMessageId = fixture.splitStateStore.listAll(CHAT_ID)
+                    .filterIsInstance<PendingSplit>()
+                    .single { it.promptMessageId != coffeePromptMessageId }
+                    .promptMessageId
+
+                val coffeeActionsMessageId =
+                    (fixture.splitStateStore.find(CHAT_ID, coffeePromptMessageId) as PendingSplit).actionsMessageId!!
+                fixture.callbackHandler.handle(
+                    CallbackContext(CHAT_ID, aliceId, groupId, "cbq", coffeeActionsMessageId, SPLIT_CANCEL_DATA),
+                )
+
+                fixture.splitStateStore.find(CHAT_ID, coffeePromptMessageId) shouldBe null
+                (fixture.splitStateStore.find(CHAT_ID, dinnerPromptMessageId) as PendingSplit)
+                    .amountsEntered shouldBe emptyMap()
             }
         }
     })
