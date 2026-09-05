@@ -198,7 +198,7 @@ class SplitFlowCallbackHandlerSpec :
             }
         }
 
-        "picking a different participant keeps the previous, still-unanswered prompt and warns its owner" {
+        "picking a different participant while holding your own pending slot deletes your stale prompt" {
             withTestDatabase { db ->
                 val fixture = CallbackFixture(db)
                 val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
@@ -210,12 +210,33 @@ class SplitFlowCallbackHandlerSpec :
 
                 fixture.pick(participantIndex = 1, memberId = aliceId, groupId = groupId, messageId = 1)
 
+                fixture.telegramApi.deletedMessages.single() shouldBe (CALLBACK_CHAT_ID to 99L)
+                fixture.telegramApi.sentMessages shouldBe emptyList()
+                fixture.currentFlow()?.pendingParticipantId shouldBe bobId
+            }
+        }
+
+        "claiming your own row while another participant is pending keeps their prompt and warns them" {
+            withTestDatabase { db ->
+                val fixture = CallbackFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
+                fixture.setFlow(
+                    fixture
+                        .anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId))
+                        .copy(pendingParticipantId = aliceId, pendingPromptMessageId = 99),
+                )
+
+                fixture.pick(participantIndex = 1, memberId = bobId, groupId = groupId, messageId = 1)
+
                 val displacedNotice =
                     "@alice, someone else is entering their amount now — " +
                         "tap \"Enter your amount\" again when you're ready."
                 fixture.telegramApi.deletedMessages shouldBe emptyList()
                 fixture.telegramApi.sentMessages shouldBe listOf(CALLBACK_CHAT_ID to displacedNotice)
                 fixture.currentFlow()?.pendingParticipantId shouldBe bobId
+                fixture.currentFlow()?.pendingPromptMessageId shouldBe 2L
+                fixture.telegramApi.sentForceReplyPrompts.single() shouldBe
+                    (CALLBACK_CHAT_ID to "How much is @bob's share? Reply to this message with an amount.")
             }
         }
 

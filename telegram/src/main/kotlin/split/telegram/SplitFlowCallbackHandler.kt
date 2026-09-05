@@ -144,8 +144,9 @@ class SplitFlowCallbackHandler(
         memberId: MemberId,
     ) {
         val (members, usernames) = membersAndUsernames(flow)
-        val displacedParticipantId = flow.pendingParticipantId
-        if (displacedParticipantId != null && displacedParticipantId != memberId) {
+        val displacedParticipantId =
+            flow.pendingParticipantId?.takeIf { it != context.memberId && it != memberId }
+        if (displacedParticipantId != null) {
             val nameOf = members.associateBy { it.id }
             val displacedName = mentionName(nameOf.getValue(displacedParticipantId), usernames)
             telegramApi.sendMessage(
