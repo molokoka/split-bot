@@ -172,6 +172,75 @@ class SplitFlowSpec :
             }
         }
 
+        "a participant answers their own auto-advanced prompt and the expense reflects it" {
+            withTestDatabase { db ->
+                val fixture = FlowFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobbyInGroup()
+
+                fixture.startSplit(aliceId, groupId, "90 dinner @bobby")
+                val promptMessageId = fixture.currentFlow()!!.promptMessageId
+                fixture.tapExact(aliceId, groupId, promptMessageId)
+                val alicePromptId = fixture.currentFlow()!!.pendingPromptMessageId!!
+                fixture.replyWithAmount(aliceId, groupId, alicePromptId, "50")
+
+                fixture.currentFlow()?.pendingParticipantId shouldBe bobId
+                val bobPromptId = fixture.currentFlow()!!.pendingPromptMessageId!!
+                fixture.replyWithAmount(bobId, groupId, bobPromptId, "40")
+
+                val latestActionsMessageId = fixture.currentFlow()!!.actionsMessageId!!
+                fixture.tapConfirm(aliceId, groupId, latestActionsMessageId)
+
+                fixture.expenseCreatedWith(groupId, aliceId to BigDecimal("50.00"), bobId to BigDecimal("40.00"))
+            }
+        }
+
+        "tapping Enter your amount from the pending list resurfaces a prompt that can be answered" {
+            withTestDatabase { db ->
+                val fixture = FlowFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobbyInGroup()
+
+                fixture.startSplit(aliceId, groupId, "90 dinner @bobby")
+                val promptMessageId = fixture.currentFlow()!!.promptMessageId
+                fixture.tapExact(aliceId, groupId, promptMessageId)
+
+                fixture.callbackHandler.handle(
+                    CallbackContext(CHAT_ID, bobId, groupId, "cbq", 999, pendingSplitEnterData(promptMessageId)),
+                )
+
+                fixture.currentFlow()?.pendingParticipantId shouldBe bobId
+                val bobPromptId = fixture.currentFlow()!!.pendingPromptMessageId!!
+                fixture.replyWithAmount(bobId, groupId, bobPromptId, "40")
+
+                fixture.currentFlow()!!.amountsEntered shouldBe mapOf(bobId to BigDecimal("40.00"))
+            }
+        }
+
+        "claiming a row while someone else has an outstanding prompt keeps their prompt and warns them" {
+            withTestDatabase { db ->
+                val fixture = FlowFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobbyInGroup()
+
+                fixture.startSplit(aliceId, groupId, "90 dinner @bobby")
+                val promptMessageId = fixture.currentFlow()!!.promptMessageId
+                fixture.tapExact(aliceId, groupId, promptMessageId)
+                fixture.currentFlow()?.pendingParticipantId shouldBe aliceId
+                val alicePromptId = fixture.currentFlow()!!.pendingPromptMessageId!!
+
+                fixture.pick(participantIndex = 1, memberId = bobId, groupId = groupId, messageId = promptMessageId)
+
+                fixture.telegramApi.deletedMessages.contains(CHAT_ID to alicePromptId) shouldBe false
+                val displacedNotice =
+                    "@alice, someone else is entering their amount now — " +
+                        "tap \"Enter your amount\" again when you're ready."
+                fixture.telegramApi.sentMessages.any { it.second == displacedNotice } shouldBe true
+
+                val bobPromptId = fixture.currentFlow()!!.pendingPromptMessageId!!
+                fixture.replyWithAmount(bobId, groupId, bobPromptId, "40")
+
+                fixture.currentFlow()!!.amountsEntered shouldBe mapOf(bobId to BigDecimal("40.00"))
+            }
+        }
+
         "re-entering a participant's amount before confirming overwrites the earlier value" {
             withTestDatabase { db ->
                 val fixture = FlowFixture(db)

@@ -143,8 +143,19 @@ class SplitFlowCallbackHandler(
         flow: PendingSplit,
         memberId: MemberId,
     ) {
-        flow.pendingPromptMessageId?.let { telegramApi.deleteMessage(context.chatId, it) }
         val (members, usernames) = membersAndUsernames(flow)
+        val displacedParticipantId = flow.pendingParticipantId
+        if (displacedParticipantId != null && displacedParticipantId != memberId) {
+            val nameOf = members.associateBy { it.id }
+            val displacedName = mentionName(nameOf.getValue(displacedParticipantId), usernames)
+            telegramApi.sendMessage(
+                context.chatId,
+                "$displacedName, someone else is entering their amount now — " +
+                    "tap \"Enter your amount\" again when you're ready.",
+            )
+        } else {
+            flow.pendingPromptMessageId?.let { telegramApi.deleteMessage(context.chatId, it) }
+        }
         val promptMessageId = sendParticipantAmountPrompt(context.chatId, memberId, members, usernames, telegramApi)
         splitStateStore.set(
             context.chatId,

@@ -198,7 +198,7 @@ class SplitFlowCallbackHandlerSpec :
             }
         }
 
-        "picking a different participant deletes the previous, still-unanswered prompt" {
+        "picking a different participant keeps the previous, still-unanswered prompt and warns its owner" {
             withTestDatabase { db ->
                 val fixture = CallbackFixture(db)
                 val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
@@ -210,8 +210,30 @@ class SplitFlowCallbackHandlerSpec :
 
                 fixture.pick(participantIndex = 1, memberId = aliceId, groupId = groupId, messageId = 1)
 
-                fixture.telegramApi.deletedMessages.single() shouldBe (-100L to 99L)
+                val displacedNotice =
+                    "@alice, someone else is entering their amount now — " +
+                        "tap \"Enter your amount\" again when you're ready."
+                fixture.telegramApi.deletedMessages shouldBe emptyList()
+                fixture.telegramApi.sentMessages shouldBe listOf(CALLBACK_CHAT_ID to displacedNotice)
                 fixture.currentFlow()?.pendingParticipantId shouldBe bobId
+            }
+        }
+
+        "re-picking the participant who already holds the prompt deletes their stale prompt" {
+            withTestDatabase { db ->
+                val fixture = CallbackFixture(db)
+                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
+                fixture.setFlow(
+                    fixture
+                        .anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId))
+                        .copy(pendingParticipantId = aliceId, pendingPromptMessageId = 99),
+                )
+
+                fixture.pick(participantIndex = 0, memberId = aliceId, groupId = groupId, messageId = 1)
+
+                fixture.telegramApi.deletedMessages.single() shouldBe (CALLBACK_CHAT_ID to 99L)
+                fixture.telegramApi.sentMessages shouldBe emptyList()
+                fixture.currentFlow()?.pendingParticipantId shouldBe aliceId
             }
         }
 

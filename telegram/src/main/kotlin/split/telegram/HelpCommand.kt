@@ -23,6 +23,7 @@ internal const val HELP_TEXT = """Commands:
 /balance — see who owes you and who you owe
 /balances — see every member's balance
 /expenses — last 10 expenses
+/expenses pending — splits still waiting on someone's amount
 /delete <code>id</code> — remove an expense (payer or admin only)
 /settle <code>@person</code> <code>amount</code> — record that you paid them
 /settle_suggest — minimal set of payments to settle the group up
