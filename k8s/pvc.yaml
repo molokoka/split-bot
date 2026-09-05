@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: split-db
+  namespace: split
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: scw-bssd-retain
+  resources:
+    requests:
+      storage: 1Gi

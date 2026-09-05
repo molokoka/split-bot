@@ -1,0 +1,12 @@
+.git
+.gradle
+.idea
+.kotlin
+build
+*/build
+k8s
+docs
+.env
+local.properties
+split-manual-test.db*
+bot-run.log
