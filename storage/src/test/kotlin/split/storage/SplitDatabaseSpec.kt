@@ -33,6 +33,7 @@ class SplitDatabaseSpec : StringSpec({
                     "settlement",
                     "platform_identity",
                     "platform_group_link",
+                    "split_flow_state",
                 )
 
                 connection.createStatement().use { statement ->
