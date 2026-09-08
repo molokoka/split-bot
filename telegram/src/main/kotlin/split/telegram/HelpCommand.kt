@@ -10,9 +10,7 @@ import split.core.GroupRepository
 // can't nest other entities inside code/pre, so this is also what stops it from reading
 // literal example text like "@person" as a real mention and pinging whichever account
 // happens to hold that username.
-internal const val HELP_TEXT = """Commands:
-
-🎯 Essential
+internal const val HELP_TEXT = """🎯 Essential
 /split — log an expense you paid. A few ways to use it:
 <code>/split 90 dinner @alice @bob</code> — pick Equal or Exact after
 <code>/split equal 90 dinner @alice @bob</code> — split equally, no tap needed
@@ -63,10 +61,20 @@ private fun helpButtonKeyboard(): InlineKeyboardMarkup =
             ),
     )
 
-private fun groupWelcomeText(defaultCurrency: String): String =
+private const val TYPED_START_RULE =
+    "One thing first: everyone who'll be @mentioned in /split needs to send me /start too — " +
+        "including you, just now. ✅\n\n"
+
+private const val GROUP_JOIN_START_RULE =
+    "One thing first: everyone who'll be @mentioned in /split needs to send me /start — " +
+        "type /start here to register yourself.\n\n"
+
+private fun groupWelcomeText(
+    defaultCurrency: String,
+    startRule: String,
+): String =
     "👋 Hi! I split expenses for this group.\n\n" +
-        "One thing first: everyone who'll be @mentioned in /split needs to send me /start too — " +
-        "including you, just now. ✅\n\n" +
+        startRule +
         "This group's default currency is $defaultCurrency — change it anytime with /currency.\n\n" +
         "Tap below to see everything I can do."
 
@@ -87,15 +95,23 @@ class StartCommand(
     private val groupRepository: GroupRepository,
     private val telegramApi: TelegramApi,
 ) {
-    suspend fun handle(context: CommandContext) = welcome(context.chatId, context.groupId)
+    suspend fun handle(context: CommandContext) {
+        if (context.args == ADD_TO_GROUP_DEEP_LINK_PAYLOAD) {
+            telegramApi.sendMessage(context.chatId, "✅ You're all set — I'm already in this group.")
+            return
+        }
+        welcome(context.chatId, context.groupId, TYPED_START_RULE)
+    }
 
-    suspend fun welcomeNewGroup(context: GroupJoinContext) = welcome(context.chatId, context.groupId)
+    suspend fun welcomeNewGroup(context: GroupJoinContext) =
+        welcome(context.chatId, context.groupId, GROUP_JOIN_START_RULE)
 
     private suspend fun welcome(
         chatId: Long,
         groupId: GroupId,
+        startRule: String,
     ) {
         val group = groupRepository.find(groupId) ?: error("Group $groupId not found")
-        telegramApi.sendMessage(chatId, groupWelcomeText(group.defaultCurrency), helpButtonKeyboard())
+        telegramApi.sendMessage(chatId, groupWelcomeText(group.defaultCurrency, startRule), helpButtonKeyboard())
     }
 }

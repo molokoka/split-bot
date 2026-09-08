@@ -404,6 +404,55 @@ class CommandRouterSpec :
             }
         }
 
+        "plain, non-command text in a private chat dispatches to the dmFallbackHandler" {
+            withTestDatabase { db ->
+                val fallbackInvocations = mutableListOf<DmCommandContext>()
+                val router =
+                    CommandRouter(
+                        aResolver(db),
+                        emptyMap(),
+                        dm = DmRouting(fallbackHandler = { context -> fallbackInvocations += context }),
+                    )
+
+                router.handleUpdate(
+                    TgUpdate(
+                        updateId = 1,
+                        message =
+                            TgMessage(
+                                messageId = 1,
+                                from = TgUser(id = 1, firstName = "Alice"),
+                                chat = TgChat(id = 555, type = "private"),
+                                text = "hi there",
+                            ),
+                    ),
+                )
+
+                fallbackInvocations.single().chatId shouldBe 555L
+            }
+        }
+
+        "the bot being added to a channel does not invoke the groupJoinHandler" {
+            withTestDatabase { db ->
+                val joinInvocations = mutableListOf<GroupJoinContext>()
+                val router = CommandRouter(aResolver(db), emptyMap(), groupJoinHandler = { joinInvocations += it })
+                val splitBot = TgUser(id = 42, firstName = "SplitBot")
+
+                router.handleUpdate(
+                    TgUpdate(
+                        updateId = 1,
+                        myChatMember =
+                            TgChatMemberUpdated(
+                                chat = TgChat(id = -900, type = "channel"),
+                                oldChatMember = TgChatMember(status = "left", user = splitBot),
+                                newChatMember = TgChatMember(status = "administrator", user = splitBot),
+                            ),
+                    ),
+                )
+
+                joinInvocations shouldBe emptyList()
+            }
+        }
+
         "the bot being added to a group invokes the groupJoinHandler" {
             withTestDatabase { db ->
                 val joinInvocations = mutableListOf<GroupJoinContext>()

@@ -63,6 +63,7 @@ data class ReplyRouting(
 
 private val chatMemberAbsentStatuses = setOf("left", "kicked")
 private val chatMemberPresentStatuses = setOf("member", "administrator")
+private val groupChatTypes = setOf("group", "supergroup")
 
 class CommandRouter(
     private val identityResolver: IdentityResolver,
@@ -94,13 +95,18 @@ class CommandRouter(
             return
         }
 
+        if (message.chat.type == "private") {
+            handlePrivateFallback(message, from)
+            return
+        }
+
         handleReply(message, from, text)
     }
 
     private suspend fun handleMyChatMember(update: TgChatMemberUpdated) {
         val handler = groupJoinHandler ?: return
         val botWasJustAddedToAGroup =
-            update.chat.type != "private" &&
+            update.chat.type in groupChatTypes &&
                 update.oldChatMember.status in chatMemberAbsentStatuses &&
                 update.newChatMember.status in chatMemberPresentStatuses
         if (!botWasJustAddedToAGroup) return
@@ -157,6 +163,16 @@ class CommandRouter(
         val memberId = identityResolver.resolveMember(from.id.toString(), from.username, from.firstName)
 
         handler(DmCommandContext(message.chat.id, memberId, from.id.toString(), args))
+    }
+
+    private suspend fun handlePrivateFallback(
+        message: TgMessage,
+        from: TgUser,
+    ) {
+        val handler = dm.fallbackHandler ?: return
+        val memberId = identityResolver.resolveMember(from.id.toString(), from.username, from.firstName)
+
+        handler(DmCommandContext(message.chat.id, memberId, from.id.toString(), args = ""))
     }
 
     private suspend fun handleReply(

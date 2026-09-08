@@ -8,10 +8,17 @@ import split.storage.ExposedGroupRepository
 import split.storage.ExposedMemberRepository
 import split.storage.ExposedPlatformDirectory
 
-private const val WELCOME_TEXT =
+private const val TYPED_START_TEXT =
     "👋 Hi! I split expenses for this group.\n\n" +
         "One thing first: everyone who'll be @mentioned in /split needs to send me /start too — " +
         "including you, just now. ✅\n\n" +
+        "This group's default currency is USD — change it anytime with /currency.\n\n" +
+        "Tap below to see everything I can do."
+
+private const val GROUP_JOIN_TEXT =
+    "👋 Hi! I split expenses for this group.\n\n" +
+        "One thing first: everyone who'll be @mentioned in /split needs to send me /start — " +
+        "type /start here to register yourself.\n\n" +
         "This group's default currency is USD — change it anytime with /currency.\n\n" +
         "Tap below to see everything I can do."
 
@@ -70,12 +77,27 @@ class HelpCommandSpec :
 
                 StartCommand(groupRepository, telegramApi).handle(context.copy(groupId = groupId))
 
-                telegramApi.sentMessages shouldBe listOf(-1L to WELCOME_TEXT)
+                telegramApi.sentMessages shouldBe listOf(-1L to TYPED_START_TEXT)
                 telegramApi.sentKeyboards shouldBe listOf(WELCOME_KEYBOARD)
             }
         }
 
-        "StartCommand.welcomeNewGroup sends the same welcome when the bot is added to a group" {
+        "StartCommand acknowledges without repeating the welcome when /start carries the deep-link payload" {
+            withTestDatabase { db ->
+                val groupRepository = ExposedGroupRepository(db)
+                val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)
+                val groupId = resolver.resolveGroup("-100003")
+                val telegramApi = FakeTelegramApi()
+
+                val deepLinkContext = context.copy(groupId = groupId, args = ADD_TO_GROUP_DEEP_LINK_PAYLOAD)
+                StartCommand(groupRepository, telegramApi).handle(deepLinkContext)
+
+                telegramApi.sentMessages shouldBe listOf(-1L to "✅ You're all set — I'm already in this group.")
+                telegramApi.sentKeyboards shouldBe listOf(null)
+            }
+        }
+
+        "StartCommand.welcomeNewGroup tells the group to /start rather than claiming anyone already has" {
             withTestDatabase { db ->
                 val groupRepository = ExposedGroupRepository(db)
                 val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)
@@ -85,7 +107,7 @@ class HelpCommandSpec :
                 val joinContext = GroupJoinContext(chatId = -2, groupId = groupId)
                 StartCommand(groupRepository, telegramApi).welcomeNewGroup(joinContext)
 
-                telegramApi.sentMessages shouldBe listOf(-2L to WELCOME_TEXT)
+                telegramApi.sentMessages shouldBe listOf(-2L to GROUP_JOIN_TEXT)
                 telegramApi.sentKeyboards shouldBe listOf(WELCOME_KEYBOARD)
             }
         }

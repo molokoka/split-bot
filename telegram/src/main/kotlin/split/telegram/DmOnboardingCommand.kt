@@ -1,7 +1,9 @@
 package split.telegram
 
+internal const val ADD_TO_GROUP_DEEP_LINK_PAYLOAD = "split"
+
 private fun addToGroupKeyboard(botUsername: String): InlineKeyboardMarkup {
-    val addToGroupUrl = "https://t.me/$botUsername?startgroup=split"
+    val addToGroupUrl = "https://t.me/$botUsername?startgroup=$ADD_TO_GROUP_DEEP_LINK_PAYLOAD"
     return InlineKeyboardMarkup(
         inlineKeyboard = listOf(listOf(InlineKeyboardButton(text = "➕ Add me to a group", url = addToGroupUrl))),
     )
