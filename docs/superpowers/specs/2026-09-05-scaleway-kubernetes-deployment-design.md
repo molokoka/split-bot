@@ -21,9 +21,7 @@ machine, with the SQLite database persisted across restarts.
   pointed at `/data/split.db`. Retain (over the default `scw-bssd`) so the
   bot's only datastore survives an accidental PVC deletion.
 - **Secret**: `TELEGRAM_BOT_TOKEN` as a plain Kubernetes Secret, created
-  manually with `kubectl create secret` and referenced via
-  `secretKeyRef`. `k8s/secret.example.yaml` documents its shape without a
-  real token.
+  manually with `kubectl create secret` and referenced via `secretKeyRef`.
 - **Networking**: no Service or Ingress — the bot only makes outbound calls
   to the Telegram API.
 - **Namespace**: dedicated `split` namespace.

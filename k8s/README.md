@@ -53,9 +53,6 @@ kubectl create secret generic split-telegram \
   --from-literal=TELEGRAM_BOT_TOKEN="<token from BotFather>"
 ```
 
-`secret.example.yaml` documents the secret's shape — don't `apply` it as-is
-or commit a copy with a real token.
-
 ## 5. Apply the storage and deployment
 
 ```bash
