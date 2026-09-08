@@ -82,3 +82,25 @@ The `Recreate` strategy in `deployment.yaml` is required, not incidental:
 the bot long-polls Telegram for updates, and two replicas polling at once
 would race for the same updates. Never scale this deployment beyond 1
 replica or switch it to `RollingUpdate`.
+
+## Other useful commands
+
+Shell into the running container (inspect the SQLite file, check env,
+etc.) — no SSH or security-group changes needed:
+
+```bash
+kubectl -n split exec -it deployment/split-telegram-bot -- sh
+```
+
+Stop the bot without losing data (scales to 0 — the Deployment, Secret,
+and PVC all stay in place, so it's a one-liner to bring back):
+
+```bash
+kubectl -n split scale deployment/split-telegram-bot --replicas=0
+```
+
+Resume it:
+
+```bash
+kubectl -n split scale deployment/split-telegram-bot --replicas=1
+```
