@@ -72,6 +72,7 @@ class CommandRouter(
         val groupId = identityResolver.resolveGroup(message.chat.id.toString())
         identityResolver.ensureGroupMembership(groupId, memberId)
 
+        println("callback \"$data\" chat=${message.chat.id} member=$memberId")
         handler(CallbackContext(message.chat.id, memberId, groupId, callbackQuery.id, message.messageId, data))
     }
 
@@ -81,12 +82,17 @@ class CommandRouter(
         text: String,
     ) {
         val (command, args) = parseCommand(text)
-        val handler = handlers[command] ?: return
+        val handler = handlers[command]
+        if (handler == null) {
+            println("unknown command \"/$command\" chat=${message.chat.id}")
+            return
+        }
 
         val memberId = identityResolver.resolveMember(from.id.toString(), from.username, from.firstName)
         val groupId = identityResolver.resolveGroup(message.chat.id.toString())
         identityResolver.ensureGroupMembership(groupId, memberId)
 
+        println("command \"/$command\" chat=${message.chat.id} member=$memberId args=\"$args\"")
         handler(CommandContext(message.chat.id, memberId, from.id.toString(), groupId, args))
     }
 
@@ -96,13 +102,21 @@ class CommandRouter(
         text: String,
     ) {
         val handler = replyHandler ?: return
-        val replyToId = message.replyToMessage?.messageId ?: return
-        if (!isTrackedReply(message.chat.id, replyToId)) return
+        val replyToId = message.replyToMessage?.messageId
+        if (replyToId == null) {
+            println("ignoring non-reply text chat=${message.chat.id}")
+            return
+        }
+        if (!isTrackedReply(message.chat.id, replyToId)) {
+            println("ignoring reply to untracked message $replyToId chat=${message.chat.id}")
+            return
+        }
 
         val memberId = identityResolver.resolveMember(from.id.toString(), from.username, from.firstName)
         val groupId = identityResolver.resolveGroup(message.chat.id.toString())
         identityResolver.ensureGroupMembership(groupId, memberId)
 
+        println("reply to $replyToId chat=${message.chat.id} member=$memberId")
         handler(ReplyContext(message.chat.id, memberId, groupId, replyToId, text))
     }
 }

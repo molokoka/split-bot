@@ -27,6 +27,7 @@ class PollLoop(
                 router.handleUpdate(update)
             } catch (e: Exception) {
                 System.err.println("Error handling update ${update.updateId}: ${e.message}")
+                e.printStackTrace()
             }
             offset = update.updateId + 1
         }
