@@ -39,12 +39,15 @@ In Telegram, message [@BotFather](https://t.me/BotFather), send `/newbot` (or re
 
 ### 2. Set environment variables
 
-The app reads two env vars directly (`System.getenv`) — nothing loads `.env` automatically, so export them in your shell first:
+The app reads these env vars directly (`System.getenv`) — nothing loads `.env` automatically, so export them in your shell first:
 
 ```bash
 export TELEGRAM_BOT_TOKEN="<token from BotFather>"
+export TELEGRAM_BOT_USERNAME="<bot's @username, without the @>"
 export SPLIT_DB_PATH="./split-manual-test.db"
 ```
+
+`TELEGRAM_BOT_USERNAME` is used to build the "Add me to a group" deep link shown when someone messages the bot directly instead of adding it to a group.
 
 `SPLIT_DB_PATH` points at a local SQLite file; if you skip it, the bot falls back to `./split-dev.db`. Either way the file is created and migrated automatically on startup — you don't need to set it up yourself. Point it at a throwaway path so you don't pollute your real dev database.
 

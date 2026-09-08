@@ -34,16 +34,25 @@ data class TgCallbackQuery(
 )
 
 @Serializable
+data class TgChatMemberUpdated(
+    val chat: TgChat,
+    @SerialName("old_chat_member") val oldChatMember: TgChatMember,
+    @SerialName("new_chat_member") val newChatMember: TgChatMember,
+)
+
+@Serializable
 data class TgUpdate(
     @SerialName("update_id") val updateId: Long,
     val message: TgMessage? = null,
     @SerialName("callback_query") val callbackQuery: TgCallbackQuery? = null,
+    @SerialName("my_chat_member") val myChatMember: TgChatMemberUpdated? = null,
 )
 
 @Serializable
 data class InlineKeyboardButton(
     val text: String,
     @SerialName("callback_data") val callbackData: String? = null,
+    val url: String? = null,
 )
 
 @Serializable
@@ -105,6 +114,17 @@ data class SendForceReplyRequest(
     val text: String,
     @SerialName("parse_mode") val parseMode: String,
     @SerialName("reply_markup") val replyMarkup: ForceReply,
+)
+
+@Serializable
+data class BotCommand(
+    val command: String,
+    val description: String,
+)
+
+@Serializable
+data class SetMyCommandsRequest(
+    val commands: List<BotCommand>,
 )
 
 @Serializable

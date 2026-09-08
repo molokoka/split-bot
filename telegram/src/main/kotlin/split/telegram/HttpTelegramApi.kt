@@ -138,4 +138,11 @@ class HttpTelegramApi(
             httpClient.get("$baseUrl/bot$botToken/getChatAdministrators?chat_id=$chatId").body()
         return response.result
     }
+
+    override suspend fun setMyCommands(commands: List<BotCommand>) {
+        httpClient.post("$baseUrl/bot$botToken/setMyCommands") {
+            contentType(ContentType.Application.Json)
+            setBody(SetMyCommandsRequest(commands))
+        }
+    }
 }
