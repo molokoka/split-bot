@@ -13,6 +13,7 @@ class FakeTelegramApi : TelegramApi {
     var chatAdministrators: List<TgChatMember> = emptyList()
     var updatesToReturn: List<TgUpdate> = emptyList()
     var getUpdatesException: Exception? = null
+    val setMyCommandsCalls = mutableListOf<List<BotCommand>>()
     private var nextMessageId = 1L
 
     override suspend fun getUpdates(
@@ -87,4 +88,8 @@ class FakeTelegramApi : TelegramApi {
     }
 
     override suspend fun getChatAdministrators(chatId: Long): List<TgChatMember> = chatAdministrators
+
+    override suspend fun setMyCommands(commands: List<BotCommand>) {
+        setMyCommandsCalls += commands
+    }
 }

@@ -110,8 +110,9 @@ class CommandRouterSpec :
 
         "dispatches a callback_query to the registered callback handler" {
             withTestDatabase { db ->
-                val callbacks = mutableListOf<CallbackContext>()
-                val router = CommandRouter(aResolver(db), emptyMap(), callbackHandler = { callbacks += it })
+                val received = mutableListOf<CallbackContext>()
+                val callbacks = CallbackRouting(flowHandler = { received += it })
+                val router = CommandRouter(aResolver(db), emptyMap(), callbacks = callbacks)
 
                 router.handleUpdate(
                     TgUpdate(
@@ -126,11 +127,11 @@ class CommandRouterSpec :
                     ),
                 )
 
-                callbacks.single() shouldBe
+                received.single() shouldBe
                     CallbackContext(
                         chatId = -1,
-                        memberId = callbacks.single().memberId,
-                        groupId = callbacks.single().groupId,
+                        memberId = received.single().memberId,
+                        groupId = received.single().groupId,
                         callbackQueryId = "cbq1",
                         messageId = 42,
                         data = "split:mode:equal",
@@ -159,8 +160,9 @@ class CommandRouterSpec :
 
         "ignores a callback_query with no message or no data" {
             withTestDatabase { db ->
-                val callbacks = mutableListOf<CallbackContext>()
-                val router = CommandRouter(aResolver(db), emptyMap(), callbackHandler = { callbacks += it })
+                val received = mutableListOf<CallbackContext>()
+                val callbacks = CallbackRouting(flowHandler = { received += it })
+                val router = CommandRouter(aResolver(db), emptyMap(), callbacks = callbacks)
 
                 router.handleUpdate(
                     TgUpdate(
@@ -187,14 +189,15 @@ class CommandRouterSpec :
                     ),
                 )
 
-                callbacks shouldBe emptyList()
+                received shouldBe emptyList()
             }
         }
 
         "dispatches a non-command reply to the registered reply handler" {
             withTestDatabase { db ->
                 val replies = mutableListOf<ReplyContext>()
-                val router = CommandRouter(aResolver(db), emptyMap(), replyHandler = { replies += it }, isTrackedReply = { _, _ -> true })
+                val reply = ReplyRouting(handler = { replies += it }, isTracked = { _, _ -> true })
+                val router = CommandRouter(aResolver(db), emptyMap(), reply = reply)
 
                 router.handleUpdate(
                     TgUpdate(
@@ -226,7 +229,7 @@ class CommandRouterSpec :
                 val platformDirectory = ExposedPlatformDirectory(db)
                 val resolver = IdentityResolver(platformDirectory, ExposedMemberRepository(db), ExposedGroupRepository(db))
                 val replies = mutableListOf<ReplyContext>()
-                val router = CommandRouter(resolver, emptyMap(), replyHandler = { replies += it })
+                val router = CommandRouter(resolver, emptyMap(), reply = ReplyRouting(handler = { replies += it }))
 
                 router.handleUpdate(
                     TgUpdate(
@@ -255,7 +258,7 @@ class CommandRouterSpec :
                     CommandRouter(
                         aResolver(db),
                         mapOf("help" to { context: CommandContext -> helpInvocations += context }),
-                        replyHandler = { replies += it },
+                        reply = ReplyRouting(handler = { replies += it }),
                     )
 
                 router.handleUpdate(
@@ -280,11 +283,239 @@ class CommandRouterSpec :
         "ignores a plain-text message that isn't a reply, even with a reply handler registered" {
             withTestDatabase { db ->
                 val replies = mutableListOf<ReplyContext>()
-                val router = CommandRouter(aResolver(db), emptyMap(), replyHandler = { replies += it })
+                val router = CommandRouter(aResolver(db), emptyMap(), reply = ReplyRouting(handler = { replies += it }))
 
                 router.handleUpdate(anUpdate("just chatting"))
 
                 replies shouldBe emptyList()
+            }
+        }
+
+        "dispatches a callback_query with matching data to a static callback handler instead of the flow handler" {
+            withTestDatabase { db ->
+                val staticCallbacks = mutableListOf<CallbackContext>()
+                val flowCallbacks = mutableListOf<CallbackContext>()
+                val helpHandler: CallbackHandler = { context -> staticCallbacks += context }
+                val router =
+                    CommandRouter(
+                        aResolver(db),
+                        emptyMap(),
+                        callbacks =
+                            CallbackRouting(
+                                flowHandler = { flowCallbacks += it },
+                                staticHandlers = mapOf("help" to helpHandler),
+                            ),
+                    )
+
+                router.handleUpdate(
+                    TgUpdate(
+                        updateId = 1,
+                        callbackQuery =
+                            TgCallbackQuery(
+                                id = "cbq1",
+                                from = TgUser(id = 1, firstName = "Alice"),
+                                message = TgMessage(messageId = 42, chat = TgChat(id = -1, type = "group")),
+                                data = "help",
+                            ),
+                    ),
+                )
+
+                staticCallbacks.single().data shouldBe "help"
+                flowCallbacks shouldBe emptyList()
+            }
+        }
+
+        "a private-chat command dispatches to the matching dmHandler, resolving no group identity" {
+            withTestDatabase { db ->
+                val platformDirectory = ExposedPlatformDirectory(db)
+                val dmInvocations = mutableListOf<DmCommandContext>()
+                val dmStartHandler: DmCommandHandler = { context -> dmInvocations += context }
+                val router =
+                    CommandRouter(
+                        aResolver(db),
+                        mapOf("start" to { _: CommandContext -> }),
+                        dm = DmRouting(handlers = mapOf("start" to dmStartHandler)),
+                    )
+
+                router.handleUpdate(
+                    TgUpdate(
+                        updateId = 1,
+                        message =
+                            TgMessage(
+                                messageId = 1,
+                                from = TgUser(id = 1, firstName = "Alice"),
+                                chat = TgChat(id = 555, type = "private"),
+                                text = "/start",
+                            ),
+                    ),
+                )
+
+                dmInvocations.single().chatId shouldBe 555L
+                platformDirectory.findGroup("telegram", "555") shouldBe null
+            }
+        }
+
+        "an unrecognized private-chat command falls back to the dmFallbackHandler" {
+            withTestDatabase { db ->
+                val fallbackInvocations = mutableListOf<DmCommandContext>()
+                val router =
+                    CommandRouter(
+                        aResolver(db),
+                        emptyMap(),
+                        dm = DmRouting(fallbackHandler = { context -> fallbackInvocations += context }),
+                    )
+
+                router.handleUpdate(
+                    TgUpdate(
+                        updateId = 1,
+                        message =
+                            TgMessage(
+                                messageId = 1,
+                                from = TgUser(id = 1, firstName = "Alice"),
+                                chat = TgChat(id = 555, type = "private"),
+                                text = "/split",
+                            ),
+                    ),
+                )
+
+                fallbackInvocations.single().args shouldBe ""
+            }
+        }
+
+        "an unrecognized private-chat command does nothing when no dmFallbackHandler is registered" {
+            withTestDatabase { db ->
+                val platformDirectory = ExposedPlatformDirectory(db)
+                val router = CommandRouter(aResolver(db), emptyMap())
+
+                router.handleUpdate(
+                    TgUpdate(
+                        updateId = 1,
+                        message =
+                            TgMessage(
+                                messageId = 1,
+                                from = TgUser(id = 1, firstName = "Alice"),
+                                chat = TgChat(id = 555, type = "private"),
+                                text = "/split",
+                            ),
+                    ),
+                )
+
+                platformDirectory.findMember("telegram", "1") shouldBe null
+            }
+        }
+
+        "plain, non-command text in a private chat dispatches to the dmFallbackHandler" {
+            withTestDatabase { db ->
+                val fallbackInvocations = mutableListOf<DmCommandContext>()
+                val router =
+                    CommandRouter(
+                        aResolver(db),
+                        emptyMap(),
+                        dm = DmRouting(fallbackHandler = { context -> fallbackInvocations += context }),
+                    )
+
+                router.handleUpdate(
+                    TgUpdate(
+                        updateId = 1,
+                        message =
+                            TgMessage(
+                                messageId = 1,
+                                from = TgUser(id = 1, firstName = "Alice"),
+                                chat = TgChat(id = 555, type = "private"),
+                                text = "hi there",
+                            ),
+                    ),
+                )
+
+                fallbackInvocations.single().chatId shouldBe 555L
+            }
+        }
+
+        "the bot being added to a channel does not invoke the groupJoinHandler" {
+            withTestDatabase { db ->
+                val joinInvocations = mutableListOf<GroupJoinContext>()
+                val router = CommandRouter(aResolver(db), emptyMap(), groupJoinHandler = { joinInvocations += it })
+                val splitBot = TgUser(id = 42, firstName = "SplitBot")
+
+                router.handleUpdate(
+                    TgUpdate(
+                        updateId = 1,
+                        myChatMember =
+                            TgChatMemberUpdated(
+                                chat = TgChat(id = -900, type = "channel"),
+                                oldChatMember = TgChatMember(status = "left", user = splitBot),
+                                newChatMember = TgChatMember(status = "administrator", user = splitBot),
+                            ),
+                    ),
+                )
+
+                joinInvocations shouldBe emptyList()
+            }
+        }
+
+        "the bot being added to a group invokes the groupJoinHandler" {
+            withTestDatabase { db ->
+                val joinInvocations = mutableListOf<GroupJoinContext>()
+                val router = CommandRouter(aResolver(db), emptyMap(), groupJoinHandler = { joinInvocations += it })
+                val splitBot = TgUser(id = 42, firstName = "SplitBot")
+
+                router.handleUpdate(
+                    TgUpdate(
+                        updateId = 1,
+                        myChatMember =
+                            TgChatMemberUpdated(
+                                chat = TgChat(id = -900, type = "supergroup"),
+                                oldChatMember = TgChatMember(status = "left", user = splitBot),
+                                newChatMember = TgChatMember(status = "member", user = splitBot),
+                            ),
+                    ),
+                )
+
+                joinInvocations.single().chatId shouldBe -900L
+            }
+        }
+
+        "the bot being removed from a group does not invoke the groupJoinHandler" {
+            withTestDatabase { db ->
+                val joinInvocations = mutableListOf<GroupJoinContext>()
+                val router = CommandRouter(aResolver(db), emptyMap(), groupJoinHandler = { joinInvocations += it })
+                val splitBot = TgUser(id = 42, firstName = "SplitBot")
+
+                router.handleUpdate(
+                    TgUpdate(
+                        updateId = 1,
+                        myChatMember =
+                            TgChatMemberUpdated(
+                                chat = TgChat(id = -900, type = "supergroup"),
+                                oldChatMember = TgChatMember(status = "member", user = splitBot),
+                                newChatMember = TgChatMember(status = "left", user = splitBot),
+                            ),
+                    ),
+                )
+
+                joinInvocations shouldBe emptyList()
+            }
+        }
+
+        "a user starting the bot in a private chat does not invoke the groupJoinHandler" {
+            withTestDatabase { db ->
+                val joinInvocations = mutableListOf<GroupJoinContext>()
+                val router = CommandRouter(aResolver(db), emptyMap(), groupJoinHandler = { joinInvocations += it })
+                val splitBot = TgUser(id = 42, firstName = "SplitBot")
+
+                router.handleUpdate(
+                    TgUpdate(
+                        updateId = 1,
+                        myChatMember =
+                            TgChatMemberUpdated(
+                                chat = TgChat(id = 555, type = "private"),
+                                oldChatMember = TgChatMember(status = "left", user = splitBot),
+                                newChatMember = TgChatMember(status = "member", user = splitBot),
+                            ),
+                    ),
+                )
+
+                joinInvocations shouldBe emptyList()
             }
         }
     })

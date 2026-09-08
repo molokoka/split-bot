@@ -105,6 +105,44 @@ class TelegramDtosSpec :
                 )
         }
 
+        "deserializes an update where the bot's own membership in a group changed" {
+            val body =
+                """
+                {
+                  "update_id": 9,
+                  "my_chat_member": {
+                    "chat": {"id": -200, "type": "supergroup"},
+                    "old_chat_member": {"status": "left", "user": {"id": 42, "first_name": "SplitBot"}},
+                    "new_chat_member": {"status": "member", "user": {"id": 42, "first_name": "SplitBot"}}
+                  }
+                }
+                """.trimIndent()
+
+            val parsed = json.decodeFromString(TgUpdate.serializer(), body)
+
+            val splitBot = TgUser(id = 42, firstName = "SplitBot")
+            parsed shouldBe
+                TgUpdate(
+                    updateId = 9,
+                    myChatMember =
+                        TgChatMemberUpdated(
+                            chat = TgChat(id = -200, type = "supergroup"),
+                            oldChatMember = TgChatMember(status = "left", user = splitBot),
+                            newChatMember = TgChatMember(status = "member", user = splitBot),
+                        ),
+                )
+        }
+
+        "an inline keyboard button can carry a url instead of callback_data" {
+            val encoded =
+                json.encodeToString(
+                    InlineKeyboardButton.serializer(),
+                    InlineKeyboardButton(text = "Add me to a group", url = "https://t.me/split_bot?startgroup=split"),
+                )
+
+            encoded shouldBe """{"text":"Add me to a group","url":"https://t.me/split_bot?startgroup=split"}"""
+        }
+
         "deserializes a message that's a reply to another message" {
             val body =
                 """

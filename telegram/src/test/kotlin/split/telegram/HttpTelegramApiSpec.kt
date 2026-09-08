@@ -236,4 +236,17 @@ class HttpTelegramApiSpec :
 
             admins shouldBe listOf(TgChatMember(status = "creator", user = TgUser(id = 7, firstName = "Owner")))
         }
+
+        "setMyCommands posts the command list as JSON" {
+            val (httpClient, requests) = clientReturning("""{"ok":true}""")
+            val api = HttpTelegramApi(botToken = "tok", httpClient = httpClient)
+
+            api.setMyCommands(listOf(BotCommand(command = "start", description = "Start using the bot")))
+
+            requests
+                .single()
+                .body
+                .toByteArray()
+                .decodeToString() shouldBe """{"commands":[{"command":"start","description":"Start using the bot"}]}"""
+        }
     })
