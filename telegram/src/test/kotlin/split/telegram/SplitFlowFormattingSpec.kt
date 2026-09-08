@@ -69,9 +69,10 @@ class SplitFlowFormattingSpec :
             splitAmountPromptText("@alice") shouldBe "How much is @alice's share? Reply to this message with an amount."
         }
 
-        "splitDraftPromptText for participants falls back to a generic example with no known usernames" {
+        "splitDraftPromptText for participants asks them to onboard with /start when no one is known yet" {
             splitDraftPromptText(SplitDraftField.PARTICIPANTS, "USD") shouldBe
-                "Who split this with you? Reply with their usernames, e.g. <code>@alice @bob</code>."
+                "Who split this with you? Reply with their usernames, e.g. <code>@alice @bob</code> — " +
+                    "they'll need to send me /start first so I recognize them."
         }
 
         "splitDraftPromptText for participants lists known usernames as a bulleted, unescaped list" {

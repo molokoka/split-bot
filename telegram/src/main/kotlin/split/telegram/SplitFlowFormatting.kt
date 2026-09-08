@@ -69,7 +69,8 @@ fun splitDraftPromptText(
         SplitDraftField.AMOUNT -> "How much, and in what currency? Reply with an amount, e.g. 90 or 90 EUR (defaults to $currency)."
         SplitDraftField.PARTICIPANTS ->
             if (knownUsernames.isEmpty()) {
-                "Who split this with you? Reply with their usernames, e.g. <code>@alice @bob</code>."
+                "Who split this with you? Reply with their usernames, e.g. <code>@alice @bob</code> — " +
+                    "they'll need to send me /start first so I recognize them."
             } else {
                 "Who split this with you? Reply with their usernames. Members:\n\n" +
                     knownUsernames.joinToString("\n") { "• @$it" }
