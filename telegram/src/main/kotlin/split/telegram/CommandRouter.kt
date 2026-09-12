@@ -2,6 +2,10 @@ package split.telegram
 
 import split.core.GroupId
 import split.core.MemberId
+import split.telegram.api.TgCallbackQuery
+import split.telegram.api.TgMessage
+import split.telegram.api.TgUpdate
+import split.telegram.api.TgUser
 
 data class CommandContext(
     val chatId: Long,

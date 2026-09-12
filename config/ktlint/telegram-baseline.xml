@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <baseline version="1.0">
-    <file name="src/main/kotlin/split/telegram/HttpTelegramApi.kt">
+    <file name="src/main/kotlin/split/telegram/api/HttpTelegramApi.kt">
         <error line="3" column="1" source="standard:no-wildcard-imports" />
         <error line="4" column="1" source="standard:no-wildcard-imports" />
         <error line="5" column="1" source="standard:no-wildcard-imports" />
@@ -10,7 +10,7 @@
         <error line="9" column="1" source="standard:no-wildcard-imports" />
         <error line="10" column="1" source="standard:no-wildcard-imports" />
     </file>
-    <file name="src/test/kotlin/split/telegram/HttpTelegramApiSpec.kt">
+    <file name="src/test/kotlin/split/telegram/api/HttpTelegramApiSpec.kt">
         <error line="5" column="1" source="standard:no-wildcard-imports" />
         <error line="6" column="1" source="standard:no-wildcard-imports" />
         <error line="7" column="1" source="standard:no-wildcard-imports" />

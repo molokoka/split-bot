@@ -155,7 +155,7 @@
     <ID>TooGenericExceptionThrown:PollLoopSpec.kt$PollLoopSpec$throw RuntimeException("simulated failure")</ID>
     <ID>TooManyFunctions:MessageFormatting.kt$split.telegram.MessageFormatting.kt</ID>
     <ID>TooManyFunctions:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler</ID>
-    <ID>TooManyFunctions:SplitFlowFormatting.kt$split.telegram.SplitFlowFormatting.kt</ID>
+    <ID>TooManyFunctions:SplitFlowFormatting.kt$split.telegram.splitflow.SplitFlowFormatting.kt</ID>
     <ID>UseRequire:CommandParsing.kt$throw IllegalArgumentException("You said &lt;code&gt;equal&lt;/code&gt; but gave specific amounts — did you mean &lt;code&gt;exact&lt;/code&gt;?")</ID>
     <ID>WildcardImport:HttpTelegramApi.kt$import io.ktor.client.*</ID>
     <ID>WildcardImport:HttpTelegramApi.kt$import io.ktor.client.call.*</ID>

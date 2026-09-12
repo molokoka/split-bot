@@ -7,6 +7,28 @@ import split.storage.ExposedPlatformDirectory
 import split.storage.ExposedSettlementRepository
 import split.storage.ExposedSplitFlowStateRepository
 import split.storage.connectDatabaseFromEnv
+import split.telegram.api.HttpTelegramApi
+import split.telegram.api.TelegramApi
+import split.telegram.commands.BalanceCommand
+import split.telegram.commands.BalancesCommand
+import split.telegram.commands.CurrencyCommand
+import split.telegram.commands.DeleteExpenseCommand
+import split.telegram.commands.ExpensesCommand
+import split.telegram.commands.HelpCommand
+import split.telegram.commands.HistoryCommand
+import split.telegram.commands.MembersCommand
+import split.telegram.commands.SettleCommand
+import split.telegram.commands.SettleSuggestCommand
+import split.telegram.commands.SettlementsCommand
+import split.telegram.commands.SplitExpenseCommand
+import split.telegram.commands.StartCommand
+import split.telegram.splitflow.PendingSplit
+import split.telegram.splitflow.PendingSplitDraft
+import split.telegram.splitflow.SplitDraftReplyHandler
+import split.telegram.splitflow.SplitFlowCallbackHandler
+import split.telegram.splitflow.SplitFlowReplyHandler
+import split.telegram.splitflow.SplitFlowStarter
+import split.telegram.splitflow.SplitStateStore
 
 class PollLoop(
     private val telegramApi: TelegramApi,

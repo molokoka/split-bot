@@ -2,6 +2,12 @@ package split.telegram
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import split.telegram.api.InlineKeyboardButton
+import split.telegram.api.InlineKeyboardMarkup
+import split.telegram.api.InputRichMessage
+import split.telegram.api.RichBlockParagraph
+import split.telegram.api.RichBlockTable
+import split.telegram.api.RichBlockTableCell
 
 class ChatTranscriptSpec :
     StringSpec({

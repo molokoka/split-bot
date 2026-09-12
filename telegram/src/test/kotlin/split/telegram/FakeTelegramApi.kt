@@ -1,5 +1,11 @@
 package split.telegram
 
+import split.telegram.api.InlineKeyboardMarkup
+import split.telegram.api.InputRichMessage
+import split.telegram.api.TelegramApi
+import split.telegram.api.TgChatMember
+import split.telegram.api.TgUpdate
+
 class FakeTelegramApi : TelegramApi {
     /** Every send/edit/delete in order, so a spec can render the chat rather than sift parallel lists. */
     val events = mutableListOf<ChatEvent>()

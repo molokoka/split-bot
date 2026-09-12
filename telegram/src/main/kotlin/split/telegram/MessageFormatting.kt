@@ -10,6 +10,10 @@ import split.core.Settlement
 import split.core.SettlementHistoryEvent
 import split.core.SplitType
 import split.core.simplifyDebts
+import split.telegram.api.InputRichMessage
+import split.telegram.api.RichBlockParagraph
+import split.telegram.api.RichBlockTable
+import split.telegram.api.RichBlockTableCell
 import java.math.BigDecimal
 import java.math.RoundingMode
 

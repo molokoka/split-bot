@@ -19,7 +19,7 @@ application {
 tasks.register<JavaExec>("seed") {
     group = "application"
     description = "Applies a named test scenario to the database (--args=\"<chatId> <scenario>\")"
-    mainClass.set("split.telegram.SeedKt")
+    mainClass.set("split.telegram.seed.SeedKt")
     classpath = sourceSets["main"].runtimeClasspath
     workingDir = rootProject.projectDir
 }
