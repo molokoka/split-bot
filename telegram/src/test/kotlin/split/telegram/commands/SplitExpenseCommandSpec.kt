@@ -14,7 +14,6 @@ import split.telegram.CommandContext
 import split.telegram.FakeTelegramApi
 import split.telegram.IdentityResolver
 import split.telegram.currentFlow
-import split.telegram.split
 import split.telegram.splitflow.PendingSplit
 import split.telegram.splitflow.PendingSplitDraft
 import split.telegram.splitflow.SPLIT_MODE_PROMPT

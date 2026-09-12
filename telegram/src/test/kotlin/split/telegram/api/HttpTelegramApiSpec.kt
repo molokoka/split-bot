@@ -11,7 +11,6 @@ import io.ktor.serialization.kotlinx.json.*
 import io.ktor.utils.io.*
 import kotlinx.serialization.json.Json
 import split.telegram.chat
-import split.telegram.split
 
 class HttpTelegramApiSpec :
     StringSpec({

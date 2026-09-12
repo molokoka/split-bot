@@ -9,7 +9,6 @@ import split.telegram.api.InlineKeyboardMarkup
 import split.telegram.api.RichBlockParagraph
 import split.telegram.api.RichBlockTable
 import split.telegram.api.RichBlockTableCell
-import split.telegram.split
 import java.math.BigDecimal
 
 class SplitFlowFormattingSpec :
@@ -78,7 +77,7 @@ class SplitFlowFormattingSpec :
         "splitDraftPromptText for participants asks them to onboard with /start when no one is known yet" {
             splitDraftPromptText(SplitDraftField.PARTICIPANTS, "USD") shouldBe
                 "Who split this with you? Reply with their usernames, e.g. <code>@alice @bob</code> — " +
-                    "they'll need to send me /start first so I recognize them."
+                "they'll need to send me /start first so I recognize them."
         }
 
         "splitDraftPromptText for participants lists known usernames as a bulleted, unescaped list" {

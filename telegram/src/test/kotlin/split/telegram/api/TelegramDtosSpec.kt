@@ -4,7 +4,6 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.Json
 import split.telegram.chat
-import split.telegram.split
 
 class TelegramDtosSpec :
     StringSpec({

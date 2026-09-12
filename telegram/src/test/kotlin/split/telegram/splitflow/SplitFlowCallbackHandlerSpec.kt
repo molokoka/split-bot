@@ -15,7 +15,6 @@ import split.telegram.FakeTelegramApi
 import split.telegram.IdentityResolver
 import split.telegram.currentFlow
 import split.telegram.expenseCreatedWith
-import split.telegram.split
 import split.telegram.withTestDatabase
 import java.math.BigDecimal
 

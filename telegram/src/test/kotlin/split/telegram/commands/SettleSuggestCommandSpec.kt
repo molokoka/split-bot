@@ -16,7 +16,6 @@ import split.storage.ExposedSettlementRepository
 import split.telegram.CommandContext
 import split.telegram.FakeTelegramApi
 import split.telegram.IdentityResolver
-import split.telegram.split
 import split.telegram.withTestDatabase
 import java.math.BigDecimal
 import java.time.Instant

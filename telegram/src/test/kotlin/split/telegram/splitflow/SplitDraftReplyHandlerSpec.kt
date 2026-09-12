@@ -76,11 +76,11 @@ private suspend fun DraftFixture.startSplit(
     args: String,
 ) = splitCommand.handle(CommandContext(DRAFT_CHAT_ID, memberId, "1", groupId, args))
 
-private suspend fun DraftFixture.currentDraft() =
-    splitStateStore.listAll(DRAFT_CHAT_ID).filterIsInstance<PendingSplitDraft>().singleOrNull()
+private suspend fun DraftFixture.states() = splitStateStore.listAll(DRAFT_CHAT_ID)
 
-private suspend fun DraftFixture.currentFlow() =
-    splitStateStore.listAll(DRAFT_CHAT_ID).filterIsInstance<PendingSplit>().singleOrNull()
+private suspend fun DraftFixture.currentDraft() = states().filterIsInstance<PendingSplitDraft>().singleOrNull()
+
+private suspend fun DraftFixture.currentFlow() = states().filterIsInstance<PendingSplit>().singleOrNull()
 
 private suspend fun DraftFixture.answer(
     memberId: MemberId,

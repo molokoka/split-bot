@@ -10,7 +10,6 @@ import split.storage.ExposedPlatformDirectory
 import split.telegram.CommandContext
 import split.telegram.FakeTelegramApi
 import split.telegram.IdentityResolver
-import split.telegram.split
 import split.telegram.withTestDatabase
 
 class HelpCommandSpec :

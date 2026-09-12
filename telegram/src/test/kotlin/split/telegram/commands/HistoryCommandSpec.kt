@@ -20,7 +20,6 @@ import split.telegram.api.InputRichMessage
 import split.telegram.api.RichBlockParagraph
 import split.telegram.api.RichBlockTable
 import split.telegram.api.RichBlockTableCell
-import split.telegram.split
 import split.telegram.withTestDatabase
 import java.math.BigDecimal
 import java.time.Instant
