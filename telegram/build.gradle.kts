@@ -14,6 +14,16 @@ application {
     mainClass.set("split.telegram.BotApplicationKt")
 }
 
+// Seeds test data for manual testing. workingDir is the repo root so a relative SPLIT_DB_PATH
+// resolves the same way here as it does for anything else run from the root, unlike :telegram:run.
+tasks.register<JavaExec>("seed") {
+    group = "application"
+    description = "Applies a named test scenario to the database (--args=\"<chatId> <scenario>\")"
+    mainClass.set("split.telegram.SeedKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    workingDir = rootProject.projectDir
+}
+
 val kotestVersion = "5.9.1"
 val ktorVersion = "3.5.2"
 

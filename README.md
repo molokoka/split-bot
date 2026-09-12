@@ -64,20 +64,34 @@ set -a; source .env; set +a
 
 You should see `Bot started, polling for updates...`. Leave it running in the foreground.
 
-### 4. Seed test members (optional)
+### 4. Seed a test scenario (optional)
 
-Some flows (`/split`'s participants step, `/expenses pending`, etc.) are only really testable
-with more than one member. Since you're the only real Telegram user in your own test chat, seed a
-few fake ones directly into the database instead of creating throwaway Telegram accounts:
+Most flows are only really testable with more than one member, and you're the only real Telegram
+user in your own test chat. Rather than recruiting accounts, apply a named scenario:
 
 ```bash
-./scripts/seed-test-members.sh ./split-manual-test.db
+./gradlew :telegram:seed --args="-1001234567890 members"
+./gradlew :telegram:seed --args="list"     # what's available
 ```
 
-Adds `@alice`, `@bobby`, and `@carol` as members of your chat's group (skipping any that already
-exist), so `/split 90 dinner @alice @bobby` works without a second real account. Run this after
-you've interacted with the bot at least once (so the group exists) and pass the same path you gave
-`SPLIT_DB_PATH`.
+The first argument is your chat's id — the bot logs it on every command (`command "/help" chat=…`),
+so message it once and copy it from there.
+
+| Scenario | What it sets up | Useful for |
+| --- | --- | --- |
+| `members` | `@alice`, `@bobby`, `@carol` | `/split 90 dinner @alice @bobby`, `/expenses pending` |
+| `expenses` | members + one expense per split type | `/expenses`, `/history`, `/balance`, `/delete` |
+| `unbalanced` | debts arranged in a chain | `/settle_suggest`, `/settle` |
+| `big-group` | eight members | how tables and keyboards hold up on long lists |
+
+Scenarios build their state through the same `IdentityResolver` and repositories the bot uses, so
+what they leave behind is what the bot itself would have written — and re-running is safe, since
+anyone already present is left alone. The command reads `SPLIT_DB_PATH` exactly like the bot does;
+unlike `:telegram:run`, a relative path here resolves against the repo root.
+
+In-flight splits aren't seedable, by design: a `split_flow_state` row is keyed by Telegram message
+ids, so a fabricated one would point at messages that were never sent — a row with no table to look
+at and no buttons to tap. Seed the members, then start the split yourself.
 
 ### 5. Stop and clean up
 
