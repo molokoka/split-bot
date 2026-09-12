@@ -2,118 +2,33 @@ package split.telegram
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
-import org.jetbrains.exposed.v1.jdbc.Database
-import split.core.GroupId
-import split.core.MemberId
-import split.storage.ExposedExpenseRepository
-import split.storage.ExposedGroupRepository
-import split.storage.ExposedMemberRepository
-import split.storage.ExposedPlatformDirectory
-import split.storage.ExposedSplitFlowStateRepository
 import java.math.BigDecimal
 
-private const val CHAT_ID = -100L
-
-private class FlowFixture(
-    db: Database,
-) {
-    val platformDirectory = ExposedPlatformDirectory(db)
-    val groupRepository = ExposedGroupRepository(db)
-    val memberRepository = ExposedMemberRepository(db)
-    val expenseRepository = ExposedExpenseRepository(db)
-    val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
-    val telegramApi = FakeTelegramApi()
-    val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
-    val flowStarter =
-        SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
-    val splitCommand =
-        SplitExpenseCommand(
-            platformDirectory,
-            groupRepository,
-            memberRepository,
-            resolver,
-            telegramApi,
-            splitStateStore,
-            flowStarter,
-        )
-    val callbackHandler =
-        SplitFlowCallbackHandler(splitStateStore, memberRepository, expenseRepository, platformDirectory, telegramApi)
-    val replyHandler = SplitFlowReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi)
-}
-
-private suspend fun FlowFixture.aliceAndBobbyInGroup(): Triple<MemberId, MemberId, GroupId> {
-    val aliceId = resolver.resolveMember("1", "alice", "Alice")
-    val groupId = resolver.resolveGroup("-100")
-    resolver.ensureGroupMembership(groupId, aliceId)
-    val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
-    return Triple(aliceId, bobbyId, groupId)
-}
-
-private suspend fun FlowFixture.startSplit(
-    memberId: MemberId,
-    groupId: GroupId,
-    args: String,
-) = splitCommand.handle(CommandContext(CHAT_ID, memberId, "1", groupId, args))
-
-private suspend fun FlowFixture.currentFlow() =
-    splitStateStore.listAll(CHAT_ID).filterIsInstance<PendingSplit>().singleOrNull()
-
-private suspend fun FlowFixture.tapEqual(
-    memberId: MemberId,
-    groupId: GroupId,
-    messageId: Long,
-) = callbackHandler.handle(CallbackContext(CHAT_ID, memberId, groupId, "cbq", messageId, SPLIT_MODE_EQUAL_DATA))
-
-private suspend fun FlowFixture.tapExact(
-    memberId: MemberId,
-    groupId: GroupId,
-    messageId: Long,
-) = callbackHandler.handle(CallbackContext(CHAT_ID, memberId, groupId, "cbq", messageId, SPLIT_MODE_EXACT_DATA))
-
-private suspend fun FlowFixture.pick(
-    participantIndex: Int,
-    memberId: MemberId,
-    groupId: GroupId,
-    messageId: Long,
-) = callbackHandler.handle(
-    CallbackContext(CHAT_ID, memberId, groupId, "cbq", messageId, splitPickData(participantIndex)),
-)
-
-private suspend fun FlowFixture.tapConfirm(
-    memberId: MemberId,
-    groupId: GroupId,
-    messageId: Long,
-) = callbackHandler.handle(CallbackContext(CHAT_ID, memberId, groupId, "cbq", messageId, SPLIT_CONFIRM_DATA))
-
-private suspend fun FlowFixture.replyWithAmount(
-    memberId: MemberId,
-    groupId: GroupId,
-    replyToMessageId: Long,
-    amount: String,
-) = replyHandler.handle(ReplyContext(CHAT_ID, memberId, groupId, replyToMessageId, amount))
-
-private suspend fun FlowFixture.expenseCreatedWith(
-    groupId: GroupId,
-    vararg shares: Pair<MemberId, BigDecimal>,
-) {
-    val expense = expenseRepository.listActive(groupId).single()
-    expense.shares.associate { it.memberId to it.shareAmount } shouldBe shares.toMap()
-}
-
+/**
+ * End-to-end split flows, asserted against the chat they produce — see [renderChat] for the
+ * rendering. Because an edited message shows its latest text where it was first sent, the message
+ * a tap changed appears *above* the tap that changed it, which is how it looks when you scroll up.
+ */
 class SplitFlowSpec :
     StringSpec({
 
         "the full equal-split flow: choose Equal, expense created immediately" {
             withTestDatabase { db ->
                 val fixture = FlowFixture(db)
-                val (aliceId, bobbyId, groupId) = fixture.aliceAndBobbyInGroup()
+                fixture.aliceAndBobbyInGroup()
 
-                fixture.startSplit(aliceId, groupId, "90 dinner @bobby")
-                val promptMessageId = fixture.currentFlow()!!.promptMessageId
+                fixture.split("alice", "90 dinner @bobby")
+                fixture.tap("alice", "Equal")
 
-                fixture.tapEqual(aliceId, groupId, promptMessageId)
+                fixture.chat() shouldBe
+                    """
+                    [alice] /split 90 dinner @bobby
+                    #1 bot: Expense added:
 
-                fixture.expenseCreatedWith(groupId, aliceId to BigDecimal("45.00"), bobbyId to BigDecimal("45.00"))
+                         @alice paid 90.00 USD for <b>dinner</b>, split equally: @alice (45.00), @bobby (45.00)
+                    [alice] taps [Equal] on #1
+                    """.trimIndent()
+                fixture.expenseCreatedWith("alice" to BigDecimal("45.00"), "bobby" to BigDecimal("45.00"))
                 fixture.currentFlow() shouldBe null
             }
         }
@@ -121,27 +36,35 @@ class SplitFlowSpec :
         "the full exact-split flow: choose Exact, enter both amounts, confirm" {
             withTestDatabase { db ->
                 val fixture = FlowFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobbyInGroup()
+                fixture.aliceAndBobbyInGroup()
 
-                fixture.startSplit(aliceId, groupId, "90 dinner @bobby")
-                val promptMessageId = fixture.currentFlow()!!.promptMessageId
-                fixture.tapExact(aliceId, groupId, promptMessageId)
+                fixture.split("alice", "90 dinner @bobby")
+                fixture.tap("alice", "Exact")
+                fixture.tap("alice", "@alice")
+                fixture.replyToPrompt("alice", "50")
+                fixture.tap("alice", "@bobby")
+                fixture.replyToPrompt("alice", "40")
+                fixture.tap("alice", "Confirm")
 
-                fixture.pick(participantIndex = 0, memberId = aliceId, groupId = groupId, messageId = promptMessageId)
-                val alicePromptId = fixture.currentFlow()!!.pendingPromptMessageId!!
-                fixture.replyWithAmount(aliceId, groupId, alicePromptId, "50")
+                fixture.chat() shouldBe
+                    """
+                    [alice] /split 90 dinner @bobby
+                    #1 bot: Expense added:
 
-                fixture.currentFlow()?.stage shouldBe SplitFlowStage.ENTERING_AMOUNTS
-                fixture.expenseRepository.listActive(groupId) shouldBe emptyList()
+                         @alice paid 90.00 USD for <b>dinner</b>, split by exact amounts: @alice (50.00), @bobby (40.00)
+                    [alice] taps [Exact] on #1
+                    [alice] taps [@alice] on #1
+                    #4 bot (force reply): How much is @alice's share? Reply to this message with an amount.
+                    [alice] ↳#4 50
+                    [alice] taps [@bobby] on #1
+                    #6 bot (force reply): How much is @bobby's share? Reply to this message with an amount.
+                    [alice] ↳#6 40
+                    #7 bot: Expense added:
 
-                fixture.pick(participantIndex = 1, memberId = aliceId, groupId = groupId, messageId = promptMessageId)
-                val bobPromptId = fixture.currentFlow()!!.pendingPromptMessageId!!
-                fixture.replyWithAmount(aliceId, groupId, bobPromptId, "40")
-
-                val latestActionsMessageId = fixture.currentFlow()!!.actionsMessageId!!
-                fixture.tapConfirm(aliceId, groupId, latestActionsMessageId)
-
-                fixture.expenseCreatedWith(groupId, aliceId to BigDecimal("50.00"), bobId to BigDecimal("40.00"))
+                         @alice paid 90.00 USD for <b>dinner</b>, split by exact amounts: @alice (50.00), @bobby (40.00)
+                    [alice] taps [Confirm] on #7
+                    """.trimIndent()
+                fixture.expenseCreatedWith("alice" to BigDecimal("50.00"), "bobby" to BigDecimal("40.00"))
                 fixture.currentFlow() shouldBe null
             }
         }
@@ -149,190 +72,242 @@ class SplitFlowSpec :
         "choosing Exact auto-advances through participants with no manual taps needed" {
             withTestDatabase { db ->
                 val fixture = FlowFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobbyInGroup()
+                fixture.aliceAndBobbyInGroup()
 
-                fixture.startSplit(aliceId, groupId, "90 dinner @bobby")
-                val promptMessageId = fixture.currentFlow()!!.promptMessageId
-                fixture.tapExact(aliceId, groupId, promptMessageId)
-                fixture.currentFlow()?.pendingParticipantId shouldBe aliceId
-                var promptId = fixture.currentFlow()!!.pendingPromptMessageId!!
+                fixture.split("alice", "90 dinner @bobby")
+                fixture.tap("alice", "Exact")
+                fixture.replyToPrompt("alice", "50")
+                fixture.replyToPrompt("alice", "40")
+                fixture.tap("alice", "Confirm")
 
-                fixture.replyWithAmount(aliceId, groupId, promptId, "50")
-                fixture.currentFlow()?.pendingParticipantId shouldBe bobId
-                promptId = fixture.currentFlow()!!.pendingPromptMessageId!!
+                fixture.chat() shouldBe
+                    """
+                    [alice] /split 90 dinner @bobby
+                    #1 bot: Expense added:
 
-                fixture.replyWithAmount(aliceId, groupId, promptId, "40")
-                fixture.currentFlow()?.pendingParticipantId shouldBe null
-                fixture.currentFlow()?.pendingPromptMessageId shouldBe null
+                         @alice paid 90.00 USD for <b>dinner</b>, split by exact amounts: @alice (50.00), @bobby (40.00)
+                    [alice] taps [Exact] on #1
+                    #3 bot (force reply): How much is @alice's share? Reply to this message with an amount.
+                    [alice] ↳#3 50
+                    #5 bot (force reply): How much is @bobby's share? Reply to this message with an amount.
+                    [alice] ↳#5 40
+                    #6 bot: Expense added:
 
-                val latestActionsMessageId = fixture.currentFlow()!!.actionsMessageId!!
-                fixture.tapConfirm(aliceId, groupId, latestActionsMessageId)
-
-                fixture.expenseCreatedWith(groupId, aliceId to BigDecimal("50.00"), bobId to BigDecimal("40.00"))
+                         @alice paid 90.00 USD for <b>dinner</b>, split by exact amounts: @alice (50.00), @bobby (40.00)
+                    [alice] taps [Confirm] on #6
+                    """.trimIndent()
+                fixture.expenseCreatedWith("alice" to BigDecimal("50.00"), "bobby" to BigDecimal("40.00"))
             }
         }
 
         "a participant answers their own auto-advanced prompt and the expense reflects it" {
             withTestDatabase { db ->
                 val fixture = FlowFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobbyInGroup()
+                fixture.aliceAndBobbyInGroup()
 
-                fixture.startSplit(aliceId, groupId, "90 dinner @bobby")
-                val promptMessageId = fixture.currentFlow()!!.promptMessageId
-                fixture.tapExact(aliceId, groupId, promptMessageId)
-                val alicePromptId = fixture.currentFlow()!!.pendingPromptMessageId!!
-                fixture.replyWithAmount(aliceId, groupId, alicePromptId, "50")
+                fixture.split("alice", "90 dinner @bobby")
+                fixture.tap("alice", "Exact")
+                fixture.replyToPrompt("alice", "50")
+                fixture.replyToPrompt("bobby", "40")
+                fixture.tap("alice", "Confirm")
 
-                fixture.currentFlow()?.pendingParticipantId shouldBe bobId
-                val bobPromptId = fixture.currentFlow()!!.pendingPromptMessageId!!
-                fixture.replyWithAmount(bobId, groupId, bobPromptId, "40")
+                fixture.chat() shouldBe
+                    """
+                    [alice] /split 90 dinner @bobby
+                    #1 bot: Expense added:
 
-                val latestActionsMessageId = fixture.currentFlow()!!.actionsMessageId!!
-                fixture.tapConfirm(aliceId, groupId, latestActionsMessageId)
+                         @alice paid 90.00 USD for <b>dinner</b>, split by exact amounts: @alice (50.00), @bobby (40.00)
+                    [alice] taps [Exact] on #1
+                    #3 bot (force reply): How much is @alice's share? Reply to this message with an amount.
+                    [alice] ↳#3 50
+                    #5 bot (force reply): How much is @bobby's share? Reply to this message with an amount.
+                    [bobby] ↳#5 40
+                    #6 bot: Expense added:
 
-                fixture.expenseCreatedWith(groupId, aliceId to BigDecimal("50.00"), bobId to BigDecimal("40.00"))
+                         @alice paid 90.00 USD for <b>dinner</b>, split by exact amounts: @alice (50.00), @bobby (40.00)
+                    [alice] taps [Confirm] on #6
+                    """.trimIndent()
+                fixture.expenseCreatedWith("alice" to BigDecimal("50.00"), "bobby" to BigDecimal("40.00"))
             }
         }
 
-        "tapping Enter your amount from the pending list resurfaces a prompt that can be answered" {
+        "a participant finds the split via /expenses pending and answers the prompt it hands them" {
             withTestDatabase { db ->
                 val fixture = FlowFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobbyInGroup()
+                fixture.aliceAndBobbyInGroup()
 
-                fixture.startSplit(aliceId, groupId, "90 dinner @bobby")
-                val promptMessageId = fixture.currentFlow()!!.promptMessageId
-                fixture.tapExact(aliceId, groupId, promptMessageId)
+                fixture.split("alice", "90 dinner @bobby")
+                fixture.tap("alice", "Exact")
+                fixture.expensesPending("bobby")
+                fixture.tap("bobby", "Enter your amount — dinner")
+                fixture.replyToPrompt("bobby", "40")
 
-                fixture.callbackHandler.handle(
-                    CallbackContext(CHAT_ID, bobId, groupId, "cbq", 999, pendingSplitEnterData(promptMessageId)),
-                )
-
-                fixture.currentFlow()?.pendingParticipantId shouldBe bobId
-                val bobPromptId = fixture.currentFlow()!!.pendingPromptMessageId!!
-                fixture.replyWithAmount(bobId, groupId, bobPromptId, "40")
-
-                fixture.currentFlow()!!.amountsEntered shouldBe mapOf(bobId to BigDecimal("40.00"))
+                fixture.chat() shouldBe
+                    """
+                    [alice] /split 90 dinner @bobby
+                    #1 bot:
+                         | Person | Amount    |
+                         | @alice | —         |
+                         | @bobby | 40.00 USD |
+                         [@alice]
+                         [@bobby ✓ 40.00 USD]
+                    [alice] taps [Exact] on #1
+                    #3 bot (force reply): How much is @alice's share? Reply to this message with an amount.
+                    [bobby] /expenses pending
+                    #4 bot:
+                         | Split     | Status   |
+                         | dinner    | @alice — |
+                         | 90.00 USD | @bobby — |
+                         [Enter your amount — dinner]
+                    [bobby] taps [Enter your amount — dinner] on #4
+                    #5 bot: @alice, someone else is entering their amount now — tap "Enter your amount" again when you're ready.
+                    #6 bot (force reply): How much is @bobby's share? Reply to this message with an amount.
+                    [bobby] ↳#6 40
+                    #7 bot: Entered 40.00 USD of 90.00 USD
+                         [Cancel]
+                    """.trimIndent()
+                fixture.currentFlow()!!.amountsEntered shouldBe mapOf(fixture.idOf("bobby") to BigDecimal("40.00"))
             }
         }
 
         "claiming a row while someone else has an outstanding prompt keeps their prompt and warns them" {
             withTestDatabase { db ->
                 val fixture = FlowFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobbyInGroup()
+                fixture.aliceAndBobbyInGroup()
 
-                fixture.startSplit(aliceId, groupId, "90 dinner @bobby")
-                val promptMessageId = fixture.currentFlow()!!.promptMessageId
-                fixture.tapExact(aliceId, groupId, promptMessageId)
-                fixture.currentFlow()?.pendingParticipantId shouldBe aliceId
-                val alicePromptId = fixture.currentFlow()!!.pendingPromptMessageId!!
+                fixture.split("alice", "90 dinner @bobby")
+                fixture.tap("alice", "Exact")
+                fixture.tap("bobby", "@bobby")
+                fixture.replyToPrompt("bobby", "40")
 
-                fixture.pick(participantIndex = 1, memberId = bobId, groupId = groupId, messageId = promptMessageId)
-
-                fixture.telegramApi.deletedMessages.contains(CHAT_ID to alicePromptId) shouldBe false
-                val displacedNotice =
-                    "@alice, someone else is entering their amount now — " +
-                        "tap \"Enter your amount\" again when you're ready."
-                fixture.telegramApi.sentMessages.any { it.second == displacedNotice } shouldBe true
-
-                val bobPromptId = fixture.currentFlow()!!.pendingPromptMessageId!!
-                fixture.replyWithAmount(bobId, groupId, bobPromptId, "40")
-
-                fixture.currentFlow()!!.amountsEntered shouldBe mapOf(bobId to BigDecimal("40.00"))
+                // #3 is still in the chat: alice's prompt was kept, not deleted out from under her.
+                fixture.chat() shouldBe
+                    """
+                    [alice] /split 90 dinner @bobby
+                    #1 bot:
+                         | Person | Amount    |
+                         | @alice | —         |
+                         | @bobby | 40.00 USD |
+                         [@alice]
+                         [@bobby ✓ 40.00 USD]
+                    [alice] taps [Exact] on #1
+                    #3 bot (force reply): How much is @alice's share? Reply to this message with an amount.
+                    [bobby] taps [@bobby] on #1
+                    #4 bot: @alice, someone else is entering their amount now — tap "Enter your amount" again when you're ready.
+                    #5 bot (force reply): How much is @bobby's share? Reply to this message with an amount.
+                    [bobby] ↳#5 40
+                    #6 bot: Entered 40.00 USD of 90.00 USD
+                         [Cancel]
+                    """.trimIndent()
             }
         }
 
         "re-entering a participant's amount before confirming overwrites the earlier value" {
             withTestDatabase { db ->
                 val fixture = FlowFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobbyInGroup()
+                fixture.aliceAndBobbyInGroup()
 
-                fixture.startSplit(aliceId, groupId, "90 dinner @bobby")
-                val promptMessageId = fixture.currentFlow()!!.promptMessageId
-                fixture.tapExact(aliceId, groupId, promptMessageId)
+                fixture.split("alice", "90 dinner @bobby")
+                fixture.tap("alice", "Exact")
+                fixture.replyToPrompt("alice", "50")
+                fixture.replyToPrompt("alice", "40")
+                fixture.tap("alice", "@alice ✓ 50.00 USD")
+                fixture.replyToPrompt("alice", "60")
 
-                fixture.pick(participantIndex = 0, memberId = aliceId, groupId = groupId, messageId = promptMessageId)
-                val aliceFirstPromptId = fixture.currentFlow()!!.pendingPromptMessageId!!
-                fixture.replyWithAmount(aliceId, groupId, aliceFirstPromptId, "50")
-                fixture.pick(participantIndex = 1, memberId = aliceId, groupId = groupId, messageId = promptMessageId)
-                val bobPromptId = fixture.currentFlow()!!.pendingPromptMessageId!!
-                fixture.replyWithAmount(aliceId, groupId, bobPromptId, "40")
-                val participantIds = listOf(aliceId, bobId)
-                var amountsEntered = fixture.currentFlow()!!.amountsEntered
-                splitIsReadyToConfirm(participantIds, amountsEntered, BigDecimal("90.00")) shouldBe true
-
-                fixture.pick(participantIndex = 0, memberId = aliceId, groupId = groupId, messageId = promptMessageId)
-                val aliceSecondPromptId = fixture.currentFlow()!!.pendingPromptMessageId!!
-                fixture.replyWithAmount(aliceId, groupId, aliceSecondPromptId, "60")
-
-                amountsEntered = fixture.currentFlow()!!.amountsEntered
-                amountsEntered shouldBe mapOf(aliceId to BigDecimal("60.00"), bobId to BigDecimal("40.00"))
-                splitIsReadyToConfirm(participantIds, amountsEntered, BigDecimal("90.00")) shouldBe false
+                // 60 + 40 overshoots 90, so Confirm is gone from the actions message.
+                fixture.chat() shouldBe
+                    """
+                    [alice] /split 90 dinner @bobby
+                    #1 bot:
+                         | Person | Amount    |
+                         | @alice | 60.00 USD |
+                         | @bobby | 40.00 USD |
+                         [@alice ✓ 60.00 USD]
+                         [@bobby ✓ 40.00 USD]
+                    [alice] taps [Exact] on #1
+                    #3 bot (force reply): How much is @alice's share? Reply to this message with an amount.
+                    [alice] ↳#3 50
+                    #5 bot (force reply): How much is @bobby's share? Reply to this message with an amount.
+                    [alice] ↳#5 40
+                    [alice] taps [@alice ✓ 50.00 USD] on #1
+                    #7 bot (force reply): How much is @alice's share? Reply to this message with an amount.
+                    [alice] ↳#7 60
+                    #8 bot: Entered 100.00 USD of 90.00 USD
+                         [Cancel]
+                    """.trimIndent()
+                fixture.currentFlow()!!.amountsEntered shouldBe
+                    mapOf(
+                        fixture.idOf("alice") to BigDecimal("60.00"),
+                        fixture.idOf("bobby") to BigDecimal("40.00"),
+                    )
             }
         }
 
         "a second /split coexists with the first, still-pending flow" {
             withTestDatabase { db ->
                 val fixture = FlowFixture(db)
-                val (aliceId, bobbyId, groupId) = fixture.aliceAndBobbyInGroup()
+                fixture.aliceAndBobbyInGroup()
 
-                fixture.startSplit(aliceId, groupId, "30 coffee @bobby")
-                val coffeePromptMessageId =
-                    (fixture.splitStateStore.listAll(CHAT_ID).single() as PendingSplit).promptMessageId
+                fixture.split("alice", "30 coffee @bobby")
+                fixture.split("alice", "90 dinner @bobby")
+                fixture.tap("alice", "Equal", onMessage = fixture.flowFor("coffee")!!.promptMessageId)
 
-                fixture.startSplit(aliceId, groupId, "90 dinner @bobby")
-                val dinnerFlow =
-                    fixture.splitStateStore
-                        .listAll(CHAT_ID)
-                        .filterIsInstance<PendingSplit>()
-                        .single { it.promptMessageId != coffeePromptMessageId }
-                dinnerFlow.description shouldBe "dinner"
+                // Confirming coffee left dinner's mode prompt untouched and still waiting.
+                fixture.chat() shouldBe
+                    """
+                    [alice] /split 30 coffee @bobby
+                    #1 bot: Expense added:
 
-                fixture.tapEqual(aliceId, groupId, coffeePromptMessageId)
-
-                fixture.expenseCreatedWith(groupId, aliceId to BigDecimal("15.00"), bobbyId to BigDecimal("15.00"))
-                (fixture.splitStateStore.find(CHAT_ID, dinnerFlow.promptMessageId) as PendingSplit)
-                    .description shouldBe "dinner"
+                         @alice paid 30.00 USD for <b>coffee</b>, split equally: @alice (15.00), @bobby (15.00)
+                    [alice] /split 90 dinner @bobby
+                    #2 bot: How should this be split?
+                         [Equal] [Exact]
+                    [alice] taps [Equal] on #1
+                    """.trimIndent()
+                fixture.expenseCreatedWith("alice" to BigDecimal("15.00"), "bobby" to BigDecimal("15.00"))
+                fixture.flowFor("dinner")!!.stage shouldBe SplitFlowStage.CHOOSING_MODE
             }
         }
 
         "cancelling one of two concurrent flows leaves the other's amounts untouched" {
             withTestDatabase { db ->
                 val fixture = FlowFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobbyInGroup()
+                fixture.aliceAndBobbyInGroup()
 
-                fixture.startSplit(aliceId, groupId, "30 coffee @bobby")
-                val coffeePromptMessageId =
-                    (fixture.splitStateStore.listAll(CHAT_ID).single() as PendingSplit).promptMessageId
-                fixture.tapExact(aliceId, groupId, coffeePromptMessageId)
-                fixture.pick(
-                    participantIndex = 0,
-                    memberId = aliceId,
-                    groupId = groupId,
-                    messageId = coffeePromptMessageId,
-                )
-                val coffeeAlicePromptId =
-                    (fixture.splitStateStore.find(CHAT_ID, coffeePromptMessageId) as PendingSplit)
-                        .pendingPromptMessageId!!
-                fixture.replyWithAmount(aliceId, groupId, coffeeAlicePromptId, "15")
+                fixture.split("alice", "30 coffee @bobby")
+                val coffeePromptMessageId = fixture.flowFor("coffee")!!.promptMessageId
+                fixture.tap("alice", "Exact", onMessage = coffeePromptMessageId)
+                fixture.replyToPrompt("alice", "15")
 
-                fixture.startSplit(aliceId, groupId, "90 dinner @bobby")
-                val dinnerPromptMessageId =
-                    fixture.splitStateStore
-                        .listAll(CHAT_ID)
-                        .filterIsInstance<PendingSplit>()
-                        .single { it.promptMessageId != coffeePromptMessageId }
-                        .promptMessageId
-                fixture.tapExact(aliceId, groupId, dinnerPromptMessageId)
+                fixture.split("alice", "90 dinner @bobby")
+                fixture.tap("alice", "Exact", onMessage = fixture.flowFor("dinner")!!.promptMessageId)
+                fixture.tap("alice", "Cancel", onMessage = fixture.flowFor("dinner")!!.actionsMessageId!!)
 
-                val dinnerActionsMessageId =
-                    (fixture.splitStateStore.find(CHAT_ID, dinnerPromptMessageId) as PendingSplit).actionsMessageId!!
-                fixture.callbackHandler.handle(
-                    CallbackContext(CHAT_ID, aliceId, groupId, "cbq", dinnerActionsMessageId, SPLIT_CANCEL_DATA),
-                )
-
-                fixture.splitStateStore.find(CHAT_ID, dinnerPromptMessageId) shouldBe null
-                (fixture.splitStateStore.find(CHAT_ID, coffeePromptMessageId) as PendingSplit)
-                    .amountsEntered shouldBe mapOf(aliceId to BigDecimal("15.00"))
+                // Coffee's table, actions and @bobby's open prompt all survive dinner's cancellation.
+                fixture.chat() shouldBe
+                    """
+                    [alice] /split 30 coffee @bobby
+                    #1 bot:
+                         | Person | Amount    |
+                         | @alice | 15.00 USD |
+                         | @bobby | —         |
+                         [@alice ✓ 15.00 USD]
+                         [@bobby]
+                    [alice] taps [Exact] on #1
+                    #3 bot (force reply): How much is @alice's share? Reply to this message with an amount.
+                    [alice] ↳#3 15
+                    #4 bot: Entered 15.00 USD of 30.00 USD
+                         [Cancel]
+                    #5 bot (force reply): How much is @bobby's share? Reply to this message with an amount.
+                    [alice] /split 90 dinner @bobby
+                    #6 bot: Split cancelled.
+                    [alice] taps [Exact] on #6
+                    #7 bot: Split cancelled.
+                    [alice] taps [Cancel] on #7
+                    """.trimIndent()
+                fixture.flowFor("dinner") shouldBe null
+                fixture.flowFor("coffee")!!.amountsEntered shouldBe
+                    mapOf(fixture.idOf("alice") to BigDecimal("15.00"))
             }
         }
     })

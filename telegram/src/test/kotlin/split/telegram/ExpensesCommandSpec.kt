@@ -287,101 +287,86 @@ class ExpensesCommandSpec :
             }
         }
 
-        "expenses pending lists open splits for the group" {
+        "expenses pending lists an open split, showing who still owes an answer" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val groupRepository = ExposedGroupRepository(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val expenseRepository = ExposedExpenseRepository(db)
-                val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
-                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100001")
-                resolver.ensureGroupMembership(groupId, aliceId)
-                val telegramApi = FakeTelegramApi()
-                val command =
-                    ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
-                splitStateStore.set(
-                    -100001,
-                    PendingSplit(
-                        invokerId = aliceId,
-                        groupId = groupId,
-                        amount = BigDecimal("90.00"),
-                        currency = "USD",
-                        description = "dinner",
-                        participantIds = listOf(aliceId),
-                        promptMessageId = 1,
-                        stage = SplitFlowStage.ENTERING_AMOUNTS,
-                    ),
-                )
+                val fixture = FlowFixture(db)
+                fixture.aliceAndBobbyInGroup()
+                fixture.split("alice", "90 dinner @bobby")
+                fixture.tap("alice", "Exact")
 
-                command.handle(CommandContext(-100001, aliceId, "1", groupId, "pending"))
+                fixture.expensesPending("alice")
 
-                val message = telegramApi.sentRichMessages.single().second
-                (message.blocks.single() as RichBlockTable).cells.size shouldBe 2
+                fixture.chat(tail = 2) shouldBe
+                    """
+                    [alice] /expenses pending
+                    #4 bot:
+                         | Split     | Status   |
+                         | dinner    | @alice — |
+                         | 90.00 USD | @bobby — |
+                         [Enter your amount — dinner]
+                    """.trimIndent()
+            }
+        }
+
+        "expenses pending still lists a flow whose amounts are all in, until someone confirms it" {
+            withTestDatabase { db ->
+                val fixture = FlowFixture(db)
+                fixture.aliceAndBobbyInGroup()
+                fixture.split("alice", "90 dinner @bobby")
+                fixture.tap("alice", "Exact")
+                fixture.replyToPrompt("alice", "50")
+                fixture.replyToPrompt("alice", "40")
+
+                fixture.expensesPending("bobby")
+
+                // 50 + 40 == 90 and nobody is being prompted any more, but until Alice taps
+                // Confirm the split is still open, so it stays listed — with no dashes left.
+                fixture.chat(tail = 2) shouldBe
+                    """
+                    [bobby] /expenses pending
+                    #7 bot:
+                         | Split     | Status           |
+                         | dinner    | @alice 50.00 USD |
+                         | 90.00 USD | @bobby 40.00 USD |
+                         [Enter your amount — dinner]
+                    """.trimIndent()
             }
         }
 
         "expenses pending says so when nothing is open" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val groupRepository = ExposedGroupRepository(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val expenseRepository = ExposedExpenseRepository(db)
-                val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
-                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100001")
-                resolver.ensureGroupMembership(groupId, aliceId)
-                val telegramApi = FakeTelegramApi()
-                val command =
-                    ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
+                val fixture = FlowFixture(db)
+                fixture.aliceAndBobbyInGroup()
 
-                command.handle(CommandContext(-100001, aliceId, "1", groupId, "pending"))
+                fixture.expensesPending("alice")
 
-                telegramApi.sentRichMessages
-                    .single()
-                    .second.blocks shouldBe listOf(RichBlockParagraph("No pending splits."))
+                fixture.chat() shouldBe
+                    """
+                    [alice] /expenses pending
+                    #1 bot:
+                         No pending splits.
+                    """.trimIndent()
             }
         }
 
         "expenses pending drops a flow once it's been confirmed" {
             withTestDatabase { db ->
-                val platformDirectory = ExposedPlatformDirectory(db)
-                val groupRepository = ExposedGroupRepository(db)
-                val memberRepository = ExposedMemberRepository(db)
-                val expenseRepository = ExposedExpenseRepository(db)
-                val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
-                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
-                val aliceId = resolver.resolveMember("1", "alice", "Alice")
-                val groupId = resolver.resolveGroup("-100001")
-                resolver.ensureGroupMembership(groupId, aliceId)
-                val telegramApi = FakeTelegramApi()
-                val command =
-                    ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)
-                val callbackHandler =
-                    SplitFlowCallbackHandler(splitStateStore, memberRepository, expenseRepository, platformDirectory, telegramApi)
-                val flow =
-                    PendingSplit(
-                        invokerId = aliceId,
-                        groupId = groupId,
-                        amount = BigDecimal("90.00"),
-                        currency = "USD",
-                        description = "dinner",
-                        participantIds = listOf(aliceId),
-                        promptMessageId = 1,
-                        stage = SplitFlowStage.ENTERING_AMOUNTS,
-                        actionsMessageId = 2,
-                        amountsEntered = mapOf(aliceId to BigDecimal("90.00")),
-                    )
-                splitStateStore.set(-100001, flow)
+                val fixture = FlowFixture(db)
+                fixture.aliceAndBobbyInGroup()
+                fixture.split("alice", "90 dinner @bobby")
+                fixture.tap("alice", "Exact")
+                fixture.replyToPrompt("alice", "50")
+                fixture.replyToPrompt("alice", "40")
+                fixture.tap("alice", "Confirm")
 
-                callbackHandler.handle(CallbackContext(-100001, aliceId, groupId, "cbq", 2, SPLIT_CONFIRM_DATA))
-                command.handle(CommandContext(-100001, aliceId, "1", groupId, "pending"))
+                fixture.expensesPending("alice")
 
-                telegramApi.sentRichMessages
-                    .last()
-                    .second.blocks shouldBe listOf(RichBlockParagraph("No pending splits."))
+                fixture.chat(tail = 2) shouldBe
+                    """
+                    [alice] /expenses pending
+                    #7 bot:
+                         No pending splits.
+                    """.trimIndent()
             }
         }
     })
