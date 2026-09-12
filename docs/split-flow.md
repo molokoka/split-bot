@@ -30,17 +30,14 @@ flowchart LR
     A4 --> A5[("split_flow_state<br/>SQLite, V3 migration")]
 ```
 
-This was an in-memory `MutableMap<chatId, SplitState>` until self-entry made flows long-lived: once
-a split can sit open for hours waiting on someone, a deploy silently dropping it is no longer an
-acceptable failure.
-
-In `storage/`:
+A split can sit open for hours waiting on someone to answer, so the state outlives any single
+process. In `storage/`:
 
 | File | Role |
 | --- | --- |
 | `SplitFlowState.kt` | `SplitFlowStateRow` DTO + `SplitFlowStateRepository` interface + `SplitFlowStateType` |
 | `ExposedSplitFlowStateRepository.kt` | Exposed impl: `upsert`, `findByChatAndMessage`, `listByChat`, `delete`, `listSplitsByGroup` |
-| `JsonColumns.kt` | encode/decode helpers for the JSON text columns (kotlinx-serialization-json added) |
+| `JsonColumns.kt` | encode/decode helpers for the JSON text columns |
 | `Tables.kt` | `SplitFlowStateTable` |
 | `V3__add_split_flow_state.sql` | the migration |
 
@@ -78,10 +75,10 @@ One table for both `SplitState` variants, keyed by `(chat_id, prompt_message_id)
 `split_flow_state_group_idx (group_id, state_type)` for `/expenses pending`. Lists and maps are
 JSON text — a flow is always read, mutated and written whole, so nothing needs to query inside them.
 
-## 3. Dispatch: from "the chat's flow" to "the flow this message belongs to"
+## 3. Dispatch
 
-The central mechanical change. Every entry point used to ask "what is this chat doing?"; now it asks
-"which flow does this message id belong to?" — and one SQL query answers it.
+Every entry point asks the same question — which flow does this message id belong to? — and one
+query answers it. Nothing resolves a flow from the chat alone, because a chat can have several.
 
 ```mermaid
 flowchart TD
@@ -89,7 +86,7 @@ flowchart TD
 
     R -->|"/command"| C["handlers[command]"]
     R -->|"callback_query"| CB["SplitFlowCallbackHandler.handle"]
-    R -->|"text reply"| T{"isTrackedReply<br/>chatId, replyToMessageId<br/>(now suspend)"}
+    R -->|"text reply"| T{"isTrackedReply<br/>chatId, replyToMessageId"}
 
     T -->|"find() == null"| DROP["ignore<br/>(logged)"]
     T -->|"found"| D{"BotApplication replyHandler:<br/>find(chatId, replyToMessageId)"}
@@ -110,11 +107,11 @@ flowchart TD
     style find fill:#eef,stroke:#446
 ```
 
-The three-way `OR` in `findByChatAndMessage` is what replaced the hand-rolled message-id checks that
-used to live in `BotApplication.isTrackedReply`, `SplitFlowCallbackHandler.handle`, and
-`SplitDraftReplyHandler`.
+A flow is reachable by any of the three message ids it owns, which is why `findByChatAndMessage`
+matches on all three: a participant may reply to the amount prompt, tap a row on the table, or tap
+Confirm on the actions message, and each has to arrive at the same row.
 
-### Store API diff
+### Store API
 
 All suspending, since every call reaches the database:
 
@@ -122,7 +119,7 @@ All suspending, since every call reaches the database:
 | --- | --- |
 | `find(chatId, messageId)` | the flow this message belongs to, by any of its three tracked ids |
 | `set(chatId, state)` | upsert, keyed by the state's own `promptMessageId` |
-| `clear(chatId, state)` | remove that one flow, not the chat's only flow |
+| `clear(chatId, state)` | remove that one flow, leaving any others in the chat alone |
 | `listAll(chatId)` | every flow open in the chat — test introspection |
 | `listOpenSplits(groupId)` | `ENTERING_AMOUNTS` flows, for `/expenses pending` |
 
@@ -142,9 +139,9 @@ stateDiagram-v2
         AMOUNT --> PARTICIPANTS: reply
         PARTICIPANTS --> [*]: mentions resolved
         note right of DESCRIPTION
-            each step now clear()s the old row
-            before set()ting the new prompt id —
-            the prompt id IS the row key
+            each step clear()s the old row before
+            set()ting the new prompt id — the
+            prompt id IS the row key
         end note
     }
 
@@ -168,11 +165,13 @@ stateDiagram-v2
     end note
 ```
 
-Starting a second `/split` in a chat no longer orphans the first — it inserts a second row.
+A second `/split` in the same chat inserts another row; the two flows are independent, and
+confirming or cancelling one leaves the other untouched.
 
 ## 5. Who may do what
 
-The single top-of-handler `memberId != flow.invokerId` gate is gone, replaced by per-action checks.
+Permission is decided per action rather than once at the top of the handler, because the actions
+differ in who they belong to.
 
 ```mermaid
 flowchart TD
@@ -244,15 +243,15 @@ sequenceDiagram
     RH->>Store: "set(amountsEntered + Alice→30)"
 ```
 
-`buildPendingSplitsMessage` / `pendingSplitsKeyboard` / `pendingSplitEnterData` are the new formatting
-functions; `PENDING_ENTER_PREFIX = "pending:enter:"`. Empty case: a plain "No pending splits." with no
-keyboard. Entering the amount itself reuses the existing prompt-and-reply path — the list's only job
-is to hand you a message you can reply to.
+`buildPendingSplitsMessage`, `pendingSplitsKeyboard` and `pendingSplitEnterData` build the message;
+`PENDING_ENTER_PREFIX = "pending:enter:"`. With nothing open it is a plain "No pending splits." and
+no keyboard. Entering the amount goes through the ordinary prompt-and-reply path — the list's only
+job is to hand you a message you can reply to.
 
 ## 7. The slot-stealing race
 
-`ENTERING_AMOUNTS` still has exactly one open slot. Two people can race for it, and the fix is about
-not destroying a bystander's prompt:
+`ENTERING_AMOUNTS` has exactly one open slot, so two people can race for it. Claiming the slot must
+not destroy the prompt a bystander is already composing a reply to:
 
 ```mermaid
 flowchart TD
@@ -264,27 +263,10 @@ flowchart TD
     P --> S["set(pendingParticipantId = memberId,<br/>pendingPromptMessageId = new,<br/>pendingIsAutoAdvance = false)"]
 ```
 
-Previously the old pending prompt was deleted unconditionally, which silently yanked the message a
-third party was about to reply to.
+Auto-advance stops once someone claims a slot out of order: whoever took it chose their moment, and
+walking the list on from there would reopen a slot nobody asked for.
 
-## 8. Working on this
-
-`CommandRouter` logs every dispatched command, callback and reply, and each of the three ways an
-update is dropped — unknown command, non-reply text, reply to an untracked message. When a tap
-appears to do nothing, that log says which of those happened.
-
-For manual testing against real Telegram, seed a group first, since most of this needs more than
-one member and you are the only real account in your own test chat:
-
-```bash
-./gradlew :telegram:seed --args="<chatId> members"
-```
-
-In-flight flows are deliberately not seedable — a `split_flow_state` row is keyed by Telegram
-message ids, so a fabricated one points at messages that were never sent, leaving a row with no
-table to look at and no buttons to tap. Seed the members, then start the split by hand.
-
-## 9. Why it's built this way
+## 8. Why it's built this way
 
 The decisions that aren't recoverable from reading the code.
 
@@ -297,13 +279,12 @@ everyone has to understand before they can use either.
 **One table with a `state_type` discriminator, not a normalized schema.** Unlike
 `Expense`/`ExpenseShare`, which are queried independently for balances and per-member history, a
 flow's participant list and entered amounts are never read on their own. Every access loads the
-whole flow, mutates it, and writes it back — the same shape as the in-memory map it replaced. So
-`participant_ids`, `amounts_entered` and `mention_usernames` are JSON text, and only the fields
+whole flow, mutates it, and writes it back. So `participant_ids`, `amounts_entered` and `mention_usernames` are JSON text, and only the fields
 actually queried — `chat_id`, `group_id`, `state_type`, the tracked message ids — are typed columns.
 
 **Several flows per chat.** `/expenses pending` is only worth having if there can be more than one
-thing pending. The old one-flow-per-chat ceiling also meant a second `/split` silently orphaned the
-first, which was a latent bug rather than a feature.
+thing pending, and a group that has to finish one split before starting another is a group that
+stops using the bot for the second one.
 
 **A sum mismatch rejects and leaves the flow open.** Confirm re-validates and shows the mismatch
 without touching the row; the split is only ever closed by a successful Confirm or by Cancel.
