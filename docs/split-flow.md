@@ -1,39 +1,40 @@
-# PR walkthrough: self-service split entry & durable flow state
+# The split flow
 
-Branch `self-declared-split` vs `main` — 30 files, +3554/−149.
-Spec: `docs/superpowers/specs/2026-09-04-self-service-split-entry-design.md`.
-Plan: `docs/superpowers/plans/2026-09-04-self-service-split-entry.md`.
+How `/split` works once it needs more than one message: where the in-flight state lives, how an
+update is routed back to the flow it belongs to, who is allowed to do what, and how a participant
+finds a split that has scrolled out of sight.
 
-Three changes, one enabling the next:
+The behaviour itself is specified by the tests. `SplitFlowSpec` (under
+`telegram/src/test/kotlin/split/telegram/splitflow/`) asserts against a rendering of the resulting
+chat, so each test reads as a transcript of what participants see. This document covers the
+structure those tests don't show, and the reasoning behind it.
 
-1. **Durable state** — `SplitStateStore`'s in-memory map becomes a SQLite table (`split_flow_state`).
-2. **Many flows per chat** — lookups key off a *message id*, not just the chat, so concurrent `/split`s coexist.
-3. **Self-service entry** — participants answer their own amount; `/expenses pending` finds a flow that scrolled away.
+Three properties hold the design together, each enabling the next:
+
+1. **State is durable** — flows live in the `split_flow_state` table, so a restart doesn't drop
+   whoever hasn't answered yet.
+2. **Many flows per chat** — lookups key off a *message id*, not just a chat, so concurrent
+   `/split`s coexist.
+3. **Anyone named can answer** — a participant enters their own amount, and `/expenses pending`
+   hands them a prompt when the original message is long gone.
 
 ---
 
-## 1. Where state lives: before → after
+## 1. Where state lives
 
 ```mermaid
 flowchart LR
-    subgraph before["BEFORE (main)"]
-        direction TB
-        B1["CommandRouter"] --> B2["SplitStateStore"]
-        B2 --> B3["MutableMap&lt;chatId, SplitState&gt;<br/>in-memory, 1 flow per chat<br/>lost on restart"]
-    end
-
-    subgraph after["AFTER (this PR)"]
-        direction TB
-        A1["CommandRouter"] --> A2["SplitStateStore<br/>(now suspend fns)"]
-        A2 --> A3["SplitFlowStateRepository<br/>(interface, storage module)"]
-        A3 --> A4["ExposedSplitFlowStateRepository"]
-        A4 --> A5[("split_flow_state<br/>SQLite, V3 migration<br/>N flows per chat<br/>survives restart")]
-    end
-
-    before -.->|"replaced by"| after
+    A1["CommandRouter"] --> A2["SplitStateStore<br/>(suspend)"]
+    A2 --> A3["SplitFlowStateRepository<br/>interface, storage module"]
+    A3 --> A4["ExposedSplitFlowStateRepository"]
+    A4 --> A5[("split_flow_state<br/>SQLite, V3 migration")]
 ```
 
-New in `storage/`:
+This was an in-memory `MutableMap<chatId, SplitState>` until self-entry made flows long-lived: once
+a split can sit open for hours waiting on someone, a deploy silently dropping it is no longer an
+acceptable failure.
+
+In `storage/`:
 
 | File | Role |
 | --- | --- |
@@ -115,29 +116,20 @@ used to live in `BotApplication.isTrackedReply`, `SplitFlowCallbackHandler.handl
 
 ### Store API diff
 
-```mermaid
-flowchart LR
-    subgraph old["main"]
-        O1["get(chatId): SplitState?"]
-        O2["set(chatId, state)"]
-        O3["clear(chatId)"]
-    end
-    subgraph new["this PR — all suspend"]
-        N1["find(chatId, messageId): SplitState?"]
-        N2["set(chatId, state)<br/>upsert keyed by state.promptMessageId"]
-        N3["clear(chatId, state)<br/>deletes that one flow"]
-        N4["listAll(chatId): List&lt;SplitState&gt;<br/>test introspection"]
-        N5["listOpenSplits(groupId): List&lt;PendingSplit&gt;<br/>ENTERING_AMOUNTS only"]
-    end
-    O1 --> N1
-    O2 --> N2
-    O3 --> N3
-```
+All suspending, since every call reaches the database:
 
-`SplitState` gained `val promptMessageId` on the sealed interface, so `set`/`clear` can derive the row
-key from any variant.
+| Method | Purpose |
+| --- | --- |
+| `find(chatId, messageId)` | the flow this message belongs to, by any of its three tracked ids |
+| `set(chatId, state)` | upsert, keyed by the state's own `promptMessageId` |
+| `clear(chatId, state)` | remove that one flow, not the chat's only flow |
+| `listAll(chatId)` | every flow open in the chat — test introspection |
+| `listOpenSplits(groupId)` | `ENTERING_AMOUNTS` flows, for `/expenses pending` |
 
-## 4. Flow lifecycle, now N-per-chat
+`promptMessageId` is declared on the sealed `SplitState` interface, so `set` and `clear` derive the
+row key from any variant without caring which one they were handed.
+
+## 4. Flow lifecycle
 
 ```mermaid
 stateDiagram-v2
@@ -178,7 +170,7 @@ stateDiagram-v2
 
 Starting a second `/split` in a chat no longer orphans the first — it inserts a second row.
 
-## 5. Who may do what (the actual behaviour change)
+## 5. Who may do what
 
 The single top-of-handler `memberId != flow.invokerId` gate is gone, replaced by per-action checks.
 
@@ -204,13 +196,16 @@ flowchart TD
     style ASSIGN fill:#efe,stroke:#484
 ```
 
-| Action | main | this PR |
-| --- | --- | --- |
-| Equal / Exact / Confirm / Cancel | invoker | invoker (unchanged) |
-| `pick` someone else's row | invoker | invoker (unchanged) |
-| `pick` **my own** row | invoker only | invoker **or that participant** |
-| Reply with an amount | invoker only | invoker **or the pending participant** |
-| Enter from `/expenses pending` | — | **any participant of that flow** |
+| Action | Who may do it |
+| --- | --- |
+| Equal / Exact / Confirm / Cancel | the invoker only |
+| `pick` someone else's row | the invoker only |
+| `pick` your own row | the invoker, or that participant |
+| Reply with an amount | the invoker, or the participant whose slot is open |
+| Enter from `/expenses pending` | any participant of that flow |
+
+The asymmetry is deliberate: deciding the split and closing it out stay with whoever started it,
+while answering for yourself never needs their involvement.
 
 ## 6. `/expenses pending`
 
@@ -254,7 +249,7 @@ functions; `PENDING_ENTER_PREFIX = "pending:enter:"`. Empty case: a plain "No pe
 keyboard. Entering the amount itself reuses the existing prompt-and-reply path — the list's only job
 is to hand you a message you can reply to.
 
-## 7. The slot-stealing race (last two commits)
+## 7. The slot-stealing race
 
 `ENTERING_AMOUNTS` still has exactly one open slot. Two people can race for it, and the fix is about
 not destroying a bystander's prompt:
@@ -272,37 +267,56 @@ flowchart TD
 Previously the old pending prompt was deleted unconditionally, which silently yanked the message a
 third party was about to reply to.
 
-## 8. Observability & dev-loop extras
+## 8. Working on this
 
-Not behavioural, but most of the noise in `CommandRouter.kt`:
+`CommandRouter` logs every dispatched command, callback and reply, and each of the three ways an
+update is dropped — unknown command, non-reply text, reply to an untracked message. When a tap
+appears to do nothing, that log says which of those happened.
 
-- `println` per dispatched command / callback / reply, plus explicit lines for the three ignore paths
-  ("unknown command", "non-reply text", "reply to untracked message").
-- `PollLoop` now prints a stack trace alongside the error message.
-- `scripts/seed-test-members.sh <db>` inserts `@alice`, `@bobby`, `@carol` into the single group in a
-  manual-test SQLite file (idempotent, guards on missing db / 0 groups / >1 group).
-- README: the seeding step, and the gotcha that a relative `SPLIT_DB_PATH` resolves against
-  `telegram/`, not the repo root.
-- `/expenses pending` added to `HELP_TEXT`; the participants prompt now tells the invoker that
-  unrecognized people must `/start` the bot first.
-- detekt baseline: two new `TooManyFunctions` entries (`SplitFlowCallbackHandler`,
-  `SplitFlowFormatting.kt`) and some `MaxLineLength` churn in specs.
+For manual testing against real Telegram, seed a group first, since most of this needs more than
+one member and you are the only real account in your own test chat:
 
-## 9. Where the implementation diverged from the spec
+```bash
+./gradlew :telegram:seed --args="<chatId> members"
+```
 
-Worth knowing if you read the spec first:
+In-flight flows are deliberately not seedable — a `split_flow_state` row is keyed by Telegram
+message ids, so a fabricated one points at messages that were never sent, leaving a row with no
+table to look at and no buttons to tap. Seed the members, then start the split by hand.
 
-| Spec said | Shipped |
-| --- | --- |
-| `id TEXT PRIMARY KEY` generated key + `created_at` | composite PK `(chat_id, prompt_message_id)`, no `created_at` |
-| indexes on `chat_id` and `(group_id, stage)` | one index on `(group_id, state_type)` |
-| `listOpen(groupId)` | `listOpenSplits(groupId)`, with the `ENTERING_AMOUNTS` filter in Kotlin, not SQL |
-| relax `pick` for self only | plus a whole new `pending:enter:` callback path |
-| — | the third-party displacement notice (found while testing, added in the last two commits) |
+## 9. Why it's built this way
 
-Tests: +861/−98 lines across `ExposedSplitFlowStateRepositorySpec` (new), `SplitStateStoreSpec`,
-`SplitFlowSpec`, `SplitFlowCallbackHandlerSpec`, `SplitFlowReplyHandlerSpec`,
-`SplitFlowFormattingSpec`, `ExpensesCommandSpec`, `SplitDraftReplyHandlerSpec`.
+The decisions that aren't recoverable from reading the code.
 
-One layering note: `telegram`'s `SplitStateStore` now imports `split.storage` types directly
-(`SplitFlowStateRow`/`Repository`), where the other repository interfaces live in `core`.
+**Self-entry is folded into Exact, not a third mode.** A participant answering for themselves and
+the payer filling in everyone produce the same expense by the same path — `resolveExactSplit` stays
+the only finalization route, and the result is a `SplitType.EXACT` expense either way. Adding a
+"self-service" mode would have meant a second way to reach an identical outcome, and a button
+everyone has to understand before they can use either.
+
+**One table with a `state_type` discriminator, not a normalized schema.** Unlike
+`Expense`/`ExpenseShare`, which are queried independently for balances and per-member history, a
+flow's participant list and entered amounts are never read on their own. Every access loads the
+whole flow, mutates it, and writes it back — the same shape as the in-memory map it replaced. So
+`participant_ids`, `amounts_entered` and `mention_usernames` are JSON text, and only the fields
+actually queried — `chat_id`, `group_id`, `state_type`, the tracked message ids — are typed columns.
+
+**Several flows per chat.** `/expenses pending` is only worth having if there can be more than one
+thing pending. The old one-flow-per-chat ceiling also meant a second `/split` silently orphaned the
+first, which was a latent bug rather than a feature.
+
+**A sum mismatch rejects and leaves the flow open.** Confirm re-validates and shows the mismatch
+without touching the row; the split is only ever closed by a successful Confirm or by Cancel.
+Auto-adjusting someone's declared amount to make the total work would quietly put words in their
+mouth, which is exactly what this flow exists to avoid.
+
+**Deliberately absent.** No receipt parsing — the photo is context for the humans, not input for the
+bot. No reminders or nudges to participants who haven't answered. No expiry on abandoned flows:
+Cancel is the only way to close one early, and a TTL is worth adding only if abandoned rows turn out
+to be a real problem.
+
+**One layering wrinkle worth knowing.** `SplitStateStore` imports `SplitFlowStateRow` and
+`SplitFlowStateRepository` from `split.storage` directly, whereas the other repository interfaces
+the adapter uses (`ExpenseRepository`, `MemberRepository`, `PlatformDirectory`) live in `core`.
+Flow state is adapter-level rather than domain state, so it doesn't belong in `core` — but the
+inconsistency is real, and worth resolving if a second adapter ever appears.
