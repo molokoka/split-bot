@@ -48,13 +48,14 @@
     <ID>MaxLineLength:DeleteExpenseCommandSpec.kt$DeleteExpenseCommandSpec$val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)</ID>
     <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$"lists active expenses oldest first, capped at the 10 most recent, naming who paid and who participated by @username"</ID>
     <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$-100L to InputRichMessage(blocks = listOf(RichBlockParagraph("No expenses yet — use /split to log one.")))</ID>
+    <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi, splitStateStore)</ID>
     <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$RichBlockTableCell("dinner\n20.00 USD · paid by @bobby\nnewer123 · 2026-08-28")</ID>
     <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$RichBlockTableCell("equally:\n@alice 10.00 USD\n@bobby 10.00 USD")</ID>
     <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$RichBlockTableCell("lunch\n10.00 USD · paid by @alice\nolder123 · 2026-08-27")</ID>
+    <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$SplitFlowCallbackHandler(splitStateStore, memberRepository, expenseRepository, platformDirectory, telegramApi)</ID>
     <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$shares = listOf(ExpenseShare(aliceId, BigDecimal("10.00")), ExpenseShare(bobbyId, BigDecimal("10.00")))</ID>
     <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$shares = listOf(ExpenseShare(aliceId, BigDecimal("30.00")), ExpenseShare(bobbyId, BigDecimal("60.00")))</ID>
     <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$shares = listOf(ExpenseShare(aliceId, BigDecimal("60.00")), ExpenseShare(bobbyId, BigDecimal("40.00")))</ID>
-    <ID>MaxLineLength:ExpensesCommandSpec.kt$ExpensesCommandSpec$val command = ExpensesCommand(groupRepository, memberRepository, expenseRepository, platformDirectory, telegramApi)</ID>
     <ID>MaxLineLength:HelpCommandSpec.kt$HelpCommandSpec$val resolver = IdentityResolver(ExposedPlatformDirectory(db), ExposedMemberRepository(db), groupRepository)</ID>
     <ID>MaxLineLength:HistoryCommandSpec.kt$HistoryCommandSpec$InputRichMessage(blocks = listOf(RichBlockParagraph("No history yet — use /split or /settle to get started.")))</ID>
     <ID>MaxLineLength:HistoryCommandSpec.kt$HistoryCommandSpec$RichBlockTableCell("2026-08-27 · dinner — @alice paid 90.00 USD")</ID>
@@ -118,7 +119,9 @@
     <ID>MaxLineLength:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$telegramApi.answerCallbackQuery(context.callbackQueryId, e.message ?: "Amounts don't add up yet.", showAlert = true)</ID>
     <ID>MaxLineLength:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$telegramApi.editMessageText(context.chatId, flow.promptMessageId, formatExpenseConfirmation(expense, members, usernames))</ID>
     <ID>MaxLineLength:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler$val promptMessageId = sendParticipantAmountPrompt(context.chatId, firstParticipantId, members, usernames, telegramApi)</ID>
+    <ID>MaxLineLength:SplitFlowCallbackHandlerSpec.kt$SplitFlowCallbackHandlerSpec$fixture.telegramApi.answeredCallbacks.last() shouldBe Triple("cbq", "This split is no longer active.", true)</ID>
     <ID>MaxLineLength:SplitFlowFormatting.kt$SplitDraftField.AMOUNT -&gt; "How much, and in what currency? Reply with an amount, e.g. 90 or 90 EUR (defaults to $currency)."</ID>
+    <ID>MaxLineLength:SplitFlowFormattingSpec.kt$SplitFlowFormattingSpec$listOf(InlineKeyboardButton(text = "Enter your amount — dinner", callbackData = "pending:enter:7"))</ID>
     <ID>MaxLineLength:SplitFlowFormattingSpec.kt$SplitFlowFormattingSpec$listOf(RichBlockTableCell("Person", isHeader = true), RichBlockTableCell("Amount", isHeader = true))</ID>
     <ID>MaxLineLength:SplitFlowFormattingSpec.kt$SplitFlowFormattingSpec$splitDraftPromptText(SplitDraftField.PARTICIPANTS, "USD", knownUsernames = listOf("julia", "marco"))</ID>
     <ID>MaxLineLength:SplitFlowReplyHandler.kt$SplitFlowReplyHandler$"That doesn't look like an amount — reply with a positive number with at most 2 decimal places, e.g. 42.50."</ID>
@@ -151,6 +154,8 @@
     <ID>TooGenericExceptionCaught:BotApplication.kt$PollLoop$e: Exception</ID>
     <ID>TooGenericExceptionThrown:PollLoopSpec.kt$PollLoopSpec$throw RuntimeException("simulated failure")</ID>
     <ID>TooManyFunctions:MessageFormatting.kt$split.telegram.MessageFormatting.kt</ID>
+    <ID>TooManyFunctions:SplitFlowCallbackHandler.kt$SplitFlowCallbackHandler</ID>
+    <ID>TooManyFunctions:SplitFlowFormatting.kt$split.telegram.splitflow.SplitFlowFormatting.kt</ID>
     <ID>UseRequire:CommandParsing.kt$throw IllegalArgumentException("You said &lt;code&gt;equal&lt;/code&gt; but gave specific amounts — did you mean &lt;code&gt;exact&lt;/code&gt;?")</ID>
     <ID>WildcardImport:HttpTelegramApi.kt$import io.ktor.client.*</ID>
     <ID>WildcardImport:HttpTelegramApi.kt$import io.ktor.client.call.*</ID>

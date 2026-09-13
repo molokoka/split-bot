@@ -5,6 +5,12 @@ import io.kotest.matchers.shouldBe
 import split.storage.ExposedGroupRepository
 import split.storage.ExposedMemberRepository
 import split.storage.ExposedPlatformDirectory
+import split.telegram.api.TgChat
+import split.telegram.api.TgMessage
+import split.telegram.api.TgUpdate
+import split.telegram.api.TgUser
+import split.telegram.commands.HELP_TEXT
+import split.telegram.commands.HelpCommand
 
 class PollLoopSpec :
     StringSpec({
