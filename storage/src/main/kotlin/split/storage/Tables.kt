@@ -69,3 +69,26 @@ object PlatformGroupLinkTable : Table("platform_group_link") {
     val groupId = text("group_id").references(GroupTable.id)
     override val primaryKey = PrimaryKey(platform, externalChatId)
 }
+
+object SplitFlowStateTable : Table("split_flow_state") {
+    val chatId = long("chat_id")
+    val promptMessageId = long("prompt_message_id")
+    val groupId = text("group_id").references(GroupTable.id)
+    val stateType = text("state_type")
+    val invokerId = text("invoker_id").references(MemberTable.id)
+    val description = text("description").nullable()
+    val amountCents = long("amount_cents").nullable()
+    val currency = text("currency").nullable()
+    val awaiting = text("awaiting").nullable()
+    val splitTypeHint = text("split_type_hint").nullable()
+    val mentionUsernames = text("mention_usernames").nullable()
+    val exactAmounts = text("exact_amounts").nullable()
+    val stage = text("stage").nullable()
+    val participantIds = text("participant_ids").nullable()
+    val amountsEntered = text("amounts_entered").nullable()
+    val actionsMessageId = long("actions_message_id").nullable()
+    val pendingParticipantId = text("pending_participant_id").nullable()
+    val pendingPromptMessageId = long("pending_prompt_message_id").nullable()
+    val pendingIsAutoAdvance = bool("pending_is_auto_advance").nullable()
+    override val primaryKey = PrimaryKey(chatId, promptMessageId)
+}

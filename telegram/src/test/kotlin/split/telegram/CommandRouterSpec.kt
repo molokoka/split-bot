@@ -6,6 +6,13 @@ import org.jetbrains.exposed.v1.jdbc.Database
 import split.storage.ExposedGroupRepository
 import split.storage.ExposedMemberRepository
 import split.storage.ExposedPlatformDirectory
+import split.telegram.api.TgCallbackQuery
+import split.telegram.api.TgChat
+import split.telegram.api.TgChatMember
+import split.telegram.api.TgChatMemberUpdated
+import split.telegram.api.TgMessage
+import split.telegram.api.TgUpdate
+import split.telegram.api.TgUser
 
 class CommandRouterSpec :
     StringSpec({

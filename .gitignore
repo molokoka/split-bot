@@ -5,6 +5,8 @@ local.properties
 gradle/gradle-daemon-jvm.properties
 .idea/
 .env
+.env.*
 split-manual-test.db*
+split-manual-test-*.db*
 bot-run.log
 *.local.md
