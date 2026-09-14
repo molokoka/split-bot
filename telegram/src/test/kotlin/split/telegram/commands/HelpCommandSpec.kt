@@ -50,7 +50,7 @@ class HelpCommandSpec :
             telegramApi.sentMessages shouldBe listOf(-1L to HELP_TEXT)
         }
 
-        "StartCommand sends a short registration confirmation, not the full welcome again" {
+        "StartCommand nudges to get others registered when the caller isn't a resolved member" {
             withTestDatabase { db ->
                 val groupRepository = ExposedGroupRepository(db)
                 val memberRepository = ExposedMemberRepository(db)
@@ -65,9 +65,33 @@ class HelpCommandSpec :
                 telegramApi.sentMessages shouldBe
                     listOf(
                         -1L to
-                            "✅ You're registered — I'll recognize you when you're <code>@mentioned</code> in /split.",
+                            "✅ You're registered. Nobody else in the group has registered yet — " +
+                            "ask everyone to run /start too.",
                     )
                 telegramApi.sentKeyboards shouldBe listOf(null)
+            }
+        }
+
+        "StartCommand greets the caller by their own @username when nudging to get others registered" {
+            withTestDatabase { db ->
+                val groupRepository = ExposedGroupRepository(db)
+                val memberRepository = ExposedMemberRepository(db)
+                val platformDirectory = ExposedPlatformDirectory(db)
+                val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
+                val aliceId = resolver.resolveMember("1", "alice", "Alice")
+                val groupId = resolver.resolveGroup("-100001")
+                resolver.ensureGroupMembership(groupId, aliceId)
+                val telegramApi = FakeTelegramApi()
+
+                StartCommand(groupRepository, memberRepository, platformDirectory, telegramApi)
+                    .handle(context.copy(memberId = aliceId, groupId = groupId))
+
+                telegramApi.sentMessages shouldBe
+                    listOf(
+                        -1L to
+                            "✅ You're registered, @alice. Nobody else in the group has registered yet — " +
+                            "ask everyone to run /start too.",
+                    )
             }
         }
 
@@ -90,7 +114,7 @@ class HelpCommandSpec :
                 telegramApi.sentMessages shouldBe
                     listOf(
                         -1L to
-                            "✅ You're registered — I'll recognize you when you're <code>@mentioned</code> " +
+                            "✅ You're registered, @bob — I'll recognize you when you're <code>@mentioned</code> " +
                             "in /split.\n\nHere's who's registered already: @alice, @bob\n" +
                             "— /members to check out members.",
                     )

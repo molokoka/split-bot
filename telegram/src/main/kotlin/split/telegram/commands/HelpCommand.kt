@@ -12,6 +12,7 @@ import split.telegram.api.InlineKeyboardButton
 import split.telegram.api.InlineKeyboardMarkup
 import split.telegram.api.TelegramApi
 import split.telegram.memberRoster
+import split.telegram.mentionName
 
 // Sent with parse_mode HTML (see HttpTelegramApi), so placeholders use <code>...</code>
 // rather than bare <angle brackets> — a raw "<amount>" would be read as an (invalid,
@@ -192,13 +193,17 @@ class StartCommand(
     // the double/triple-message pile-up this replaced. A registered member just needs to know
     // they're recognized now, plus who else is already registered.
     suspend fun handle(context: CommandContext) {
-        val confirmation = "✅ You're registered — I'll recognize you when you're <code>@mentioned</code> in /split."
         val members = memberRepository.findByGroup(context.groupId)
+        val usernames = platformDirectory.findUsernames(IdentityResolver.PLATFORM, members.map { it.id })
+        val caller = members.find { it.id == context.memberId }
+        val greeting = caller?.let { ", ${mentionName(it, usernames)}" } ?: ""
         val message =
             if (members.size < 2) {
-                confirmation
+                "✅ You're registered$greeting. Nobody else in the group has registered yet — " +
+                    "ask everyone to run /start too."
             } else {
-                val usernames = platformDirectory.findUsernames(IdentityResolver.PLATFORM, members.map { it.id })
+                val confirmation =
+                    "✅ You're registered$greeting — I'll recognize you when you're <code>@mentioned</code> in /split."
                 "$confirmation\n\nHere's who's registered already: ${memberRoster(members, usernames)}\n" +
                     "— /members to check out members."
             }
