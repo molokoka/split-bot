@@ -9,15 +9,21 @@ import split.storage.ExposedSplitFlowStateRepository
 import split.storage.connectDatabaseFromEnv
 import split.telegram.api.HttpTelegramApi
 import split.telegram.api.TelegramApi
+import split.telegram.commands.ADD_TO_GROUP_DEEP_LINK_PAYLOAD
 import split.telegram.commands.BOT_COMMANDS
 import split.telegram.commands.BalanceCommand
 import split.telegram.commands.BalancesCommand
+import split.telegram.commands.COMMANDS_ADVANCED_CALLBACK_DATA
+import split.telegram.commands.COMMANDS_BALANCE_CALLBACK_DATA
+import split.telegram.commands.COMMANDS_CALLBACK_DATA
+import split.telegram.commands.COMMANDS_SETTLE_CALLBACK_DATA
+import split.telegram.commands.COMMANDS_SPLIT_CALLBACK_DATA
+import split.telegram.commands.CommandsCommand
 import split.telegram.commands.CurrencyCommand
 import split.telegram.commands.DeleteExpenseCommand
 import split.telegram.commands.DmFallbackCommand
 import split.telegram.commands.DmStartCommand
 import split.telegram.commands.ExpensesCommand
-import split.telegram.commands.HELP_CALLBACK_DATA
 import split.telegram.commands.HelpCommand
 import split.telegram.commands.HistoryCommand
 import split.telegram.commands.MembersCommand
@@ -89,26 +95,48 @@ suspend fun main() {
         )
     val splitFlowReplyHandler = SplitFlowReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi)
     val splitDraftReplyHandler = SplitDraftReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi, flowStarter)
-    val startCommand = StartCommand(groupRepository, telegramApi)
+    val startCommand = StartCommand(groupRepository, memberRepository, platformDirectory, telegramApi)
     val helpCommand = HelpCommand(telegramApi)
     val dmStartCommand = DmStartCommand(botUsername, telegramApi)
     val dmFallbackCommand = DmFallbackCommand(botUsername, telegramApi)
+    val splitExpenseCommand =
+        SplitExpenseCommand(
+            platformDirectory,
+            groupRepository,
+            memberRepository,
+            identityResolver,
+            telegramApi,
+            splitStateStore,
+            flowStarter,
+        )
+    val balanceCommand =
+        BalanceCommand(
+            groupRepository,
+            memberRepository,
+            expenseRepository,
+            settlementRepository,
+            platformDirectory,
+            telegramApi,
+        )
+    val settleCommand = SettleCommand(platformDirectory, groupRepository, settlementRepository, telegramApi)
+    val commandsCommand = CommandsCommand(telegramApi, balanceCommand, settleCommand, splitExpenseCommand)
 
     val handlers =
         mapOf(
-            "start" to startCommand::handle,
+            // Telegram's "Add to Group" deep link auto-sends /start with this payload to the
+            // group, whether or not the bot is new to it. welcomeNewGroup (the my_chat_member
+            // event) already sends the real welcome for a genuine add, so this deliberately does
+            // nothing rather than duplicate it or guess whether the bot was already present.
+            "start" to { context: CommandContext ->
+                if (context.args != ADD_TO_GROUP_DEEP_LINK_PAYLOAD) {
+                    startCommand.handle(context)
+                }
+            },
             "help" to helpCommand::handle,
+            "commands" to commandsCommand::handle,
             "currency" to CurrencyCommand(groupRepository, telegramApi)::handle,
             "members" to MembersCommand(memberRepository, platformDirectory, telegramApi)::handle,
-            "split" to SplitExpenseCommand(
-                platformDirectory,
-                groupRepository,
-                memberRepository,
-                identityResolver,
-                telegramApi,
-                splitStateStore,
-                flowStarter,
-            )::handle,
+            "split" to splitExpenseCommand::handle,
             "delete" to DeleteExpenseCommand(groupRepository, expenseRepository, telegramApi)::handle,
             "expenses" to ExpensesCommand(
                 groupRepository,
@@ -118,14 +146,7 @@ suspend fun main() {
                 telegramApi,
                 splitStateStore,
             )::handle,
-            "balance" to BalanceCommand(
-                groupRepository,
-                memberRepository,
-                expenseRepository,
-                settlementRepository,
-                platformDirectory,
-                telegramApi,
-            )::handle,
+            "balance" to balanceCommand::handle,
             "balances" to BalancesCommand(
                 groupRepository,
                 memberRepository,
@@ -134,7 +155,7 @@ suspend fun main() {
                 platformDirectory,
                 telegramApi,
             )::handle,
-            "settle" to SettleCommand(platformDirectory, groupRepository, settlementRepository, telegramApi)::handle,
+            "settle" to settleCommand::handle,
             "settle_suggest" to SettleSuggestCommand(
                 groupRepository,
                 memberRepository,
@@ -167,7 +188,14 @@ suspend fun main() {
             callbacks =
                 CallbackRouting(
                     flowHandler = splitFlowCallbackHandler::handle,
-                    staticHandlers = mapOf(HELP_CALLBACK_DATA to helpCommand::handleCallback),
+                    staticHandlers =
+                        mapOf(
+                            COMMANDS_CALLBACK_DATA to commandsCommand::handleWelcomeCallback,
+                            COMMANDS_ADVANCED_CALLBACK_DATA to commandsCommand::handleAdvancedCallback,
+                            COMMANDS_SPLIT_CALLBACK_DATA to commandsCommand::handleSplitCallback,
+                            COMMANDS_BALANCE_CALLBACK_DATA to commandsCommand::handleBalanceCallback,
+                            COMMANDS_SETTLE_CALLBACK_DATA to commandsCommand::handleSettleCallback,
+                        ),
                 ),
             reply =
                 ReplyRouting(

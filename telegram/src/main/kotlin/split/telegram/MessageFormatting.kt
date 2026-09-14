@@ -173,6 +173,11 @@ private fun settlementRow(
     return listOf(date, from, to, formatAmount(settlement.amount, settlement.currency)).map { RichBlockTableCell(text = it) }
 }
 
+internal fun memberRoster(
+    members: List<Member>,
+    usernames: Map<MemberId, String>,
+): String = members.sortedBy { it.displayName }.joinToString(", ") { mentionName(it, usernames) }
+
 fun formatBalances(
     paymentsByCurrency: Map<String, List<DebtPayment>>,
     members: List<Member>,

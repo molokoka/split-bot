@@ -47,7 +47,7 @@ class MembersCommandSpec :
             }
         }
 
-        "lists members by @username, preferred over their display name, once one is known" {
+        "lists members by @username alongside their display name once one is known" {
             withTestDatabase { db ->
                 val platformDirectory = ExposedPlatformDirectory(db)
                 val groupRepository = ExposedGroupRepository(db)
@@ -61,7 +61,7 @@ class MembersCommandSpec :
 
                 command.handle(CommandContext(-100, memberId, "1", groupId, ""))
 
-                telegramApi.sentMessages shouldBe listOf(-100L to "Members:\n\n• @alice_w")
+                telegramApi.sentMessages shouldBe listOf(-100L to "Members:\n\n• @alice_w (Alice)")
             }
         }
     })

@@ -336,6 +336,10 @@ class MessageFormattingSpec :
             shouldThrow<NoSuchElementException> { formatBalances(payments, members, viewerId = alice.id) }
         }
 
+        "formatAllBalances says everyone's settled up when there's nothing relevant" {
+            formatAllBalances(emptyMap(), members) shouldBe "Everyone's settled up!"
+        }
+
         "formatSettleSuggestions lists every payment" {
             val payments = mapOf("USD" to listOf(DebtPayment(from = bob.id, to = alice.id, amount = BigDecimal("30.00"))))
 

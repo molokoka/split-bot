@@ -7,6 +7,7 @@ import split.core.PlatformDirectory
 import split.telegram.CommandContext
 import split.telegram.IdentityResolver
 import split.telegram.api.TelegramApi
+import split.telegram.escapeHtml
 import split.telegram.mentionName
 
 class MembersCommand(
@@ -26,5 +27,15 @@ internal fun formatMembers(
     usernames: Map<MemberId, String> = emptyMap(),
 ): String {
     if (members.isEmpty()) return "No members yet."
-    return "Members:\n\n" + members.joinToString("\n") { "• ${mentionName(it, usernames)}" }
+    return "Members:\n\n" +
+        members.joinToString("\n") { member ->
+            val nametag = mentionName(member, usernames)
+            val label =
+                if (usernames.containsKey(member.id)) {
+                    "$nametag (${escapeHtml(member.displayName)})"
+                } else {
+                    nametag
+                }
+            "• $label"
+        }
 }
