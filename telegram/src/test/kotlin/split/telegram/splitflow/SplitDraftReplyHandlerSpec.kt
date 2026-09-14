@@ -1,22 +1,18 @@
 package split.telegram.splitflow
 
-import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import org.jetbrains.exposed.v1.jdbc.Database
-import split.core.GroupId
 import split.core.MemberId
 import split.storage.ExposedExpenseRepository
-import split.storage.ExposedGroupRepository
-import split.storage.ExposedMemberRepository
-import split.storage.ExposedPlatformDirectory
 import split.storage.ExposedSplitFlowStateRepository
 import split.telegram.CommandContext
-import split.telegram.FakeTelegramApi
-import split.telegram.IdentityResolver
+import split.telegram.GroupOf
+import split.telegram.IdentityFixture
 import split.telegram.ReplyContext
-import split.telegram.aliceAndBobbyInGroup
 import split.telegram.commands.SplitExpenseCommand
-import split.telegram.currentFlow
+import split.telegram.joined
+import split.telegram.personas
 import split.telegram.withTestDatabase
 import java.math.BigDecimal
 
@@ -24,13 +20,8 @@ private const val DRAFT_CHAT_ID = -100L
 
 private class DraftFixture(
     db: Database,
-) {
-    val platformDirectory = ExposedPlatformDirectory(db)
-    val groupRepository = ExposedGroupRepository(db)
-    val memberRepository = ExposedMemberRepository(db)
+) : IdentityFixture(db) {
     val expenseRepository = ExposedExpenseRepository(db)
-    val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
-    val telegramApi = FakeTelegramApi()
     val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
     val flowStarter =
         SplitFlowStarter(splitStateStore, memberRepository, platformDirectory, expenseRepository, telegramApi)
@@ -47,32 +38,20 @@ private class DraftFixture(
     val handler = SplitDraftReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi, flowStarter)
 }
 
-private suspend fun DraftFixture.aliceAndBobbyInGroup(): Triple<MemberId, MemberId, GroupId> {
-    val aliceId = resolver.resolveMember("1", "alice", "Alice")
-    val groupId = resolver.resolveGroup("-100")
-    resolver.ensureGroupMembership(groupId, aliceId)
-    val bobbyId = resolver.resolveMember("2", "bobby", "Bob")
-    return Triple(aliceId, bobbyId, groupId)
+/** Runs [block] — a scenario where someone answers the bot's step-by-step /split prompts — against a fresh fixture. */
+private suspend fun duringDraftReply(block: suspend DraftFixture.() -> Unit) {
+    withTestDatabase { db -> DraftFixture(db).block() }
 }
 
-private suspend fun DraftFixture.aliceOnly(): Pair<MemberId, GroupId> {
-    val aliceId = resolver.resolveMember("1", "alice", "Alice")
-    val groupId = resolver.resolveGroup("-100")
-    resolver.ensureGroupMembership(groupId, aliceId)
-    return aliceId to groupId
-}
-
-private suspend fun DraftFixture.aliceAndBob(): Triple<MemberId, MemberId, GroupId> {
-    val aliceId = resolver.resolveMember("1", "alice", "Alice")
-    val bobId = resolver.resolveMember("2", "bob", "Bob")
-    val groupId = resolver.resolveGroup("-100")
-    resolver.ensureGroupMembership(groupId, aliceId)
-    return Triple(aliceId, bobId, groupId)
+/** Alice joined to the group; Bobby known (the tests mention him by text) but never added as a member. */
+private suspend fun DraftFixture.aliceInGroupWithBobbyKnown(): GroupOf {
+    val group = personas().alice().bobby().known()
+    joined(group.groupId, listOf(group.alice))
+    return group
 }
 
 private suspend fun DraftFixture.startSplit(
     memberId: MemberId,
-    groupId: GroupId,
     args: String,
 ) = splitCommand.handle(CommandContext(DRAFT_CHAT_ID, memberId, "1", groupId, args))
 
@@ -84,129 +63,125 @@ private suspend fun DraftFixture.currentFlow() = states().filterIsInstance<Pendi
 
 private suspend fun DraftFixture.answer(
     memberId: MemberId,
-    groupId: GroupId,
     replyToMessageId: Long,
     text: String,
 ) = handler.handle(ReplyContext(DRAFT_CHAT_ID, memberId, groupId, replyToMessageId, text))
 
 private suspend fun DraftFixture.answerAsInvoker(
     memberId: MemberId,
-    groupId: GroupId,
     text: String,
 ) {
     val promptId = currentDraft()!!.promptMessageId
-    answer(memberId, groupId, promptId, text)
+    answer(memberId, promptId, text)
 }
 
 class SplitDraftReplyHandlerSpec :
-    StringSpec({
+    DescribeSpec({
 
-        "completing description, amount, then participants starts the mode-choice flow" {
-            withTestDatabase { db ->
-                val fixture = DraftFixture(db)
-                val (aliceId, bobbyId, groupId) = fixture.aliceAndBobbyInGroup()
+        describe("advancing the draft one field at a time") {
+            it("completing description, amount, then participants starts the mode-choice flow") {
+                duringDraftReply {
+                    val group = aliceInGroupWithBobbyKnown()
 
-                fixture.startSplit(aliceId, groupId, "")
-                fixture.answerAsInvoker(aliceId, groupId, "dinner")
+                    startSplit(group.alice, "")
+                    answerAsInvoker(group.alice, "dinner")
 
-                fixture.currentDraft()?.awaiting shouldBe SplitDraftField.AMOUNT
-                fixture.answerAsInvoker(aliceId, groupId, "90")
+                    currentDraft()?.awaiting shouldBe SplitDraftField.AMOUNT
+                    answerAsInvoker(group.alice, "90")
 
-                fixture.currentDraft()?.awaiting shouldBe SplitDraftField.PARTICIPANTS
-                fixture.answerAsInvoker(aliceId, groupId, "@bobby")
+                    currentDraft()?.awaiting shouldBe SplitDraftField.PARTICIPANTS
+                    answerAsInvoker(group.alice, "@bobby")
 
-                fixture.expenseRepository.listActive(groupId) shouldBe emptyList()
-                fixture.currentFlow()?.stage shouldBe SplitFlowStage.CHOOSING_MODE
-                fixture.currentFlow()?.participantIds shouldBe listOf(aliceId, bobbyId)
+                    expenseRepository.listActive(group.groupId) shouldBe emptyList()
+                    currentFlow()?.stage shouldBe SplitFlowStage.CHOOSING_MODE
+                    currentFlow()?.participantIds shouldBe listOf(group.alice, group.bobby)
+                }
+            }
+
+            it("an empty description reply doesn't advance the draft") {
+                duringDraftReply {
+                    val group = personas().alice().inGroup()
+
+                    startSplit(group.alice, "")
+                    answerAsInvoker(group.alice, "   ")
+
+                    currentDraft()?.awaiting shouldBe SplitDraftField.DESCRIPTION
+                    currentDraft()?.description shouldBe null
+                }
+            }
+
+            it("an invalid amount reply doesn't advance the draft") {
+                duringDraftReply {
+                    val group = personas().alice().inGroup()
+
+                    startSplit(group.alice, "dinner")
+                    answerAsInvoker(group.alice, "not a number")
+
+                    currentDraft()?.awaiting shouldBe SplitDraftField.AMOUNT
+                    currentDraft()?.amount shouldBe null
+                }
+            }
+
+            it("an amount reply can override the currency") {
+                duringDraftReply {
+                    val group = personas().alice().inGroup()
+
+                    startSplit(group.alice, "dinner")
+                    answerAsInvoker(group.alice, "90 EUR")
+
+                    currentDraft()?.amount shouldBe BigDecimal("90.00")
+                    currentDraft()?.currency shouldBe "EUR"
+                    currentDraft()?.awaiting shouldBe SplitDraftField.PARTICIPANTS
+                }
             }
         }
 
-        "an equal keyword carried through the draft finishes without a mode-choice tap" {
-            withTestDatabase { db ->
-                val fixture = DraftFixture(db)
-                val (aliceId, bobbyId, groupId) = fixture.aliceAndBobbyInGroup()
+        describe("finishing the draft") {
+            it("an equal keyword carried through the draft finishes without a mode-choice tap") {
+                duringDraftReply {
+                    val group = aliceInGroupWithBobbyKnown()
 
-                fixture.startSplit(aliceId, groupId, "equal @bobby")
-                fixture.answerAsInvoker(aliceId, groupId, "dinner")
-                fixture.answerAsInvoker(aliceId, groupId, "90")
+                    startSplit(group.alice, "equal @bobby")
+                    answerAsInvoker(group.alice, "dinner")
+                    answerAsInvoker(group.alice, "90")
 
-                fixture.currentDraft() shouldBe null
-                val expense = fixture.expenseRepository.listActive(groupId).single()
-                expense.shares.associate { it.memberId to it.shareAmount } shouldBe
-                    mapOf(
-                        aliceId to BigDecimal("45.00"),
-                        bobbyId to BigDecimal("45.00"),
-                    )
+                    currentDraft() shouldBe null
+                    val expense = expenseRepository.listActive(group.groupId).single()
+                    expense.shares.associate { it.memberId to it.shareAmount } shouldBe
+                        mapOf(
+                            group.alice to BigDecimal("45.00"),
+                            group.bobby to BigDecimal("45.00"),
+                        )
+                }
+            }
+
+            it("an unrecognized mention at the participants step errors and clears the draft") {
+                duringDraftReply {
+                    val group = personas().alice().inGroup()
+
+                    startSplit(group.alice, "90 dinner")
+                    answerAsInvoker(group.alice, "@stranger")
+
+                    expenseRepository.listActive(group.groupId) shouldBe emptyList()
+                    telegramApi.sentMessages.last().let { (_, text) ->
+                        text shouldBe "I don't recognize <code>@stranger</code> yet — ask them to run /start with me first."
+                    }
+                }
             }
         }
 
-        "an empty description reply doesn't advance the draft" {
-            withTestDatabase { db ->
-                val fixture = DraftFixture(db)
-                val (aliceId, groupId) = fixture.aliceOnly()
+        describe("authorization") {
+            it("a reply from someone other than the invoker is ignored") {
+                duringDraftReply {
+                    val group = personas().alice().bobby().inGroup()
 
-                fixture.startSplit(aliceId, groupId, "")
-                fixture.answerAsInvoker(aliceId, groupId, "   ")
+                    startSplit(group.alice, "")
+                    val draftBefore = currentDraft()!!
 
-                fixture.currentDraft()?.awaiting shouldBe SplitDraftField.DESCRIPTION
-                fixture.currentDraft()?.description shouldBe null
-            }
-        }
+                    answer(group.bobby, draftBefore.promptMessageId, "dinner")
 
-        "an invalid amount reply doesn't advance the draft" {
-            withTestDatabase { db ->
-                val fixture = DraftFixture(db)
-                val (aliceId, groupId) = fixture.aliceOnly()
-
-                fixture.startSplit(aliceId, groupId, "dinner")
-                fixture.answerAsInvoker(aliceId, groupId, "not a number")
-
-                fixture.currentDraft()?.awaiting shouldBe SplitDraftField.AMOUNT
-                fixture.currentDraft()?.amount shouldBe null
-            }
-        }
-
-        "an amount reply can override the currency" {
-            withTestDatabase { db ->
-                val fixture = DraftFixture(db)
-                val (aliceId, groupId) = fixture.aliceOnly()
-
-                fixture.startSplit(aliceId, groupId, "dinner")
-                fixture.answerAsInvoker(aliceId, groupId, "90 EUR")
-
-                fixture.currentDraft()?.amount shouldBe BigDecimal("90.00")
-                fixture.currentDraft()?.currency shouldBe "EUR"
-                fixture.currentDraft()?.awaiting shouldBe SplitDraftField.PARTICIPANTS
-            }
-        }
-
-        "an unrecognized mention at the participants step errors and clears the draft" {
-            withTestDatabase { db ->
-                val fixture = DraftFixture(db)
-                val (aliceId, groupId) = fixture.aliceOnly()
-
-                fixture.startSplit(aliceId, groupId, "90 dinner")
-                fixture.answerAsInvoker(aliceId, groupId, "@stranger")
-
-                fixture.expenseRepository.listActive(groupId) shouldBe emptyList()
-                fixture.telegramApi.sentMessages
-                    .last()
-                    .second shouldBe
-                    "I don't recognize <code>@stranger</code> yet — ask them to run /start with me first."
-            }
-        }
-
-        "a reply from someone other than the invoker is ignored" {
-            withTestDatabase { db ->
-                val fixture = DraftFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBob()
-
-                fixture.startSplit(aliceId, groupId, "")
-                val draftBefore = fixture.currentDraft()!!
-
-                fixture.answer(bobId, groupId, draftBefore.promptMessageId, "dinner")
-
-                fixture.currentDraft() shouldBe draftBefore
+                    currentDraft() shouldBe draftBefore
+                }
             }
         }
     })

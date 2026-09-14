@@ -71,7 +71,7 @@ private val chatMemberPresentStatuses = setOf("member", "administrator")
 private val groupChatTypes = setOf("group", "supergroup")
 
 class CommandRouter(
-    private val identityResolver: IdentityResolver,
+    private val identityResolver: IdentityResolving,
     private val handlers: Map<String, CommandHandler>,
     private val callbacks: CallbackRouting = CallbackRouting(),
     private val reply: ReplyRouting = ReplyRouting(),
