@@ -1,18 +1,14 @@
 package split.telegram.splitflow
 
-import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import org.jetbrains.exposed.v1.jdbc.Database
-import split.core.GroupId
 import split.core.MemberId
-import split.storage.ExposedGroupRepository
-import split.storage.ExposedMemberRepository
-import split.storage.ExposedPlatformDirectory
 import split.storage.ExposedSplitFlowStateRepository
-import split.telegram.FakeTelegramApi
-import split.telegram.IdentityResolver
+import split.telegram.IdentityFixture
 import split.telegram.ReplyContext
-import split.telegram.currentFlow
+import split.telegram.carol
+import split.telegram.personas
 import split.telegram.withTestDatabase
 import java.math.BigDecimal
 
@@ -22,44 +18,18 @@ private const val INVALID_AMOUNT_MESSAGE =
 
 private class ReplyFixture(
     db: Database,
-) {
-    val platformDirectory = ExposedPlatformDirectory(db)
-    val memberRepository = ExposedMemberRepository(db)
-    val resolver = IdentityResolver(platformDirectory, memberRepository, ExposedGroupRepository(db))
-    val telegramApi = FakeTelegramApi()
+) : IdentityFixture(db) {
     val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
     val handler = SplitFlowReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi)
 }
 
-private suspend fun ReplyFixture.aliceAndBob(): Triple<MemberId, MemberId, GroupId> {
-    val aliceId = resolver.resolveMember("1", "alice", "Alice")
-    val bobId = resolver.resolveMember("2", "bob", "Bob")
-    val groupId = resolver.resolveGroup("-100")
-    return Triple(aliceId, bobId, groupId)
-}
-
-private suspend fun ReplyFixture.aliceAndBobInGroup(): Triple<MemberId, MemberId, GroupId> {
-    val (aliceId, bobId, groupId) = aliceAndBob()
-    resolver.ensureGroupMembership(groupId, aliceId)
-    resolver.ensureGroupMembership(groupId, bobId)
-    return Triple(aliceId, bobId, groupId)
-}
-
-private suspend fun ReplyFixture.aliceOnly(): Pair<MemberId, GroupId> {
-    val aliceId = resolver.resolveMember("1", "alice", "Alice")
-    val groupId = resolver.resolveGroup("-100")
-    return aliceId to groupId
-}
-
-private suspend fun ReplyFixture.aliceOnlyInGroup(): Pair<MemberId, GroupId> {
-    val (aliceId, groupId) = aliceOnly()
-    resolver.ensureGroupMembership(groupId, aliceId)
-    return aliceId to groupId
+/** Runs [block] — a scenario where someone replies with an amount mid-split — against a fresh fixture. */
+private suspend fun duringReply(block: suspend ReplyFixture.() -> Unit) {
+    withTestDatabase { db -> ReplyFixture(db).block() }
 }
 
 private fun ReplyFixture.anEnteringAmountsFlow(
     invokerId: MemberId,
-    groupId: GroupId,
     participantIds: List<MemberId>,
     pendingParticipantId: MemberId?,
     pendingPromptMessageId: Long? = 3,
@@ -83,251 +53,198 @@ private suspend fun ReplyFixture.currentFlow() = splitStateStore.listAll(REPLY_C
 
 private suspend fun ReplyFixture.reply(
     memberId: MemberId,
-    groupId: GroupId,
     replyToMessageId: Long,
     text: String,
 ) = handler.handle(ReplyContext(REPLY_CHAT_ID, memberId, groupId, replyToMessageId, text))
 
 private suspend fun ReplyFixture.replyIsRejectedAsInvalidAmount(
     memberId: MemberId,
-    groupId: GroupId,
     replyToMessageId: Long,
     text: String,
     pending: PendingSplit,
 ) {
-    reply(memberId, groupId, replyToMessageId, text)
+    reply(memberId, replyToMessageId, text)
 
     currentFlow() shouldBe pending
-    telegramApi.sentMessages.single().second shouldBe INVALID_AMOUNT_MESSAGE
+    telegramApi.sentMessages.single().let { (_, message) -> message shouldBe INVALID_AMOUNT_MESSAGE }
 }
 
 class SplitFlowReplyHandlerSpec :
-    StringSpec({
+    DescribeSpec({
 
-        "a valid amount reply fills in the pending participant, edits both messages, and auto-advances to the next unfilled one" {
-            withTestDatabase { db ->
-                val fixture = ReplyFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                fixture.setFlow(
-                    fixture.anEnteringAmountsFlow(
-                        aliceId,
-                        groupId,
-                        listOf(aliceId, bobId),
-                        pendingParticipantId = bobId,
-                    ),
-                )
+        describe("entering an amount advances the flow") {
+            it("fills in the pending participant, edits both messages, and auto-advances to the next unfilled one") {
+                duringReply {
+                    val group = personas().alice().bobby().inGroup()
+                    setFlow(
+                        anEnteringAmountsFlow(group.alice, listOf(group.alice, group.bobby), pendingParticipantId = group.bobby),
+                    )
 
-                fixture.reply(aliceId, groupId, replyToMessageId = 3, text = "40")
+                    reply(group.alice, replyToMessageId = 3, text = "40")
 
-                val flow = fixture.currentFlow() as? PendingSplit
-                flow?.amountsEntered shouldBe mapOf(bobId to BigDecimal("40.00"))
-                flow?.pendingParticipantId shouldBe aliceId
-                fixture.telegramApi.sentForceReplyPrompts
-                    .single()
-                    .second shouldBe
-                    "How much is @alice's share? Reply to this message with an amount."
-                fixture.telegramApi.editedRichMessages.single().let { (chatId, messageId, _) ->
-                    chatId shouldBe -100L
-                    messageId shouldBe 1L
+                    val flow = currentFlow() as? PendingSplit
+                    flow?.amountsEntered shouldBe mapOf(group.bobby to BigDecimal("40.00"))
+                    flow?.pendingParticipantId shouldBe group.alice
+                    telegramApi.sentForceReplyPrompts.single().let { (_, text) ->
+                        text shouldBe "How much is @alice's share? Reply to this message with an amount."
+                    }
+                    telegramApi.editedRichMessages.single().let { (chatId, messageId, _) ->
+                        chatId shouldBe REPLY_CHAT_ID
+                        messageId shouldBe 1L
+                    }
+
+                    telegramApi.deletedMessages.single() shouldBe (REPLY_CHAT_ID to 2L)
+                    telegramApi.sentMessages.single().first shouldBe REPLY_CHAT_ID
+                    flow?.actionsMessageId shouldBe 1L
+                    flow?.pendingPromptMessageId shouldBe 2L
                 }
-
-                fixture.telegramApi.deletedMessages.single() shouldBe (-100L to 2L)
-                fixture.telegramApi.sentMessages
-                    .single()
-                    .first shouldBe -100L
-                flow?.actionsMessageId shouldBe 1L
-                flow?.pendingPromptMessageId shouldBe 2L
             }
-        }
 
-        "a reply for a manually-picked participant does not auto-advance to the next one" {
-            withTestDatabase { db ->
-                val fixture = ReplyFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                fixture.setFlow(
-                    fixture
-                        .anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId), pendingParticipantId = bobId)
-                        .copy(pendingIsAutoAdvance = false),
-                )
-
-                fixture.reply(aliceId, groupId, replyToMessageId = 3, text = "40")
-
-                val flow = fixture.currentFlow() as? PendingSplit
-                flow?.amountsEntered shouldBe mapOf(bobId to BigDecimal("40.00"))
-                flow?.pendingParticipantId shouldBe null
-                flow?.pendingPromptMessageId shouldBe null
-                fixture.telegramApi.sentForceReplyPrompts shouldBe emptyList()
-            }
-        }
-
-        "once every participant has an amount, the flow stops advancing and waits for Confirm" {
-            withTestDatabase { db ->
-                val fixture = ReplyFixture(db)
-                val (aliceId, groupId) = fixture.aliceOnlyInGroup()
-                fixture.setFlow(
-                    fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId), pendingParticipantId = aliceId),
-                )
-
-                fixture.reply(aliceId, groupId, replyToMessageId = 3, text = "90")
-
-                val flow = fixture.currentFlow() as? PendingSplit
-                flow?.amountsEntered shouldBe mapOf(aliceId to BigDecimal("90.00"))
-                flow?.pendingParticipantId shouldBe null
-                flow?.pendingPromptMessageId shouldBe null
-                fixture.telegramApi.sentForceReplyPrompts shouldBe emptyList()
-
-                fixture.telegramApi.deletedMessages.single() shouldBe (-100L to 2L)
-                flow?.actionsMessageId shouldBe 1L
-            }
-        }
-
-        "an invalid amount reply doesn't touch state and asks again" {
-            withTestDatabase { db ->
-                val fixture = ReplyFixture(db)
-                val (aliceId, groupId) = fixture.aliceOnly()
-                val pending =
-                    fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId), pendingParticipantId = aliceId)
-                fixture.setFlow(pending)
-
-                fixture.replyIsRejectedAsInvalidAmount(
-                    aliceId,
-                    groupId,
-                    replyToMessageId = 3,
-                    text = "not a number",
-                    pending,
-                )
-            }
-        }
-
-        "a reply with more than 2 decimal places doesn't touch state and asks again" {
-            withTestDatabase { db ->
-                val fixture = ReplyFixture(db)
-                val (aliceId, groupId) = fixture.aliceOnly()
-                val pending =
-                    fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId), pendingParticipantId = aliceId)
-                fixture.setFlow(pending)
-
-                fixture.replyIsRejectedAsInvalidAmount(aliceId, groupId, replyToMessageId = 3, text = "33.333", pending)
-            }
-        }
-
-        "a non-positive amount reply doesn't touch state and asks again" {
-            withTestDatabase { db ->
-                val fixture = ReplyFixture(db)
-                val (aliceId, groupId) = fixture.aliceOnly()
-                val pending =
-                    fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId), pendingParticipantId = aliceId)
-                fixture.setFlow(pending)
-
-                fixture.replyIsRejectedAsInvalidAmount(aliceId, groupId, replyToMessageId = 3, text = "-5", pending)
-            }
-        }
-
-        "a reply from someone other than the invoker is ignored" {
-            withTestDatabase { db ->
-                val fixture = ReplyFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBob()
-                val pending =
-                    fixture.anEnteringAmountsFlow(
-                        aliceId,
-                        groupId,
-                        listOf(aliceId, bobId),
-                        pendingParticipantId = aliceId,
+            it("does not auto-advance to the next participant when the reply was for a manually-picked one") {
+                duringReply {
+                    val group = personas().alice().bobby().inGroup()
+                    setFlow(
+                        anEnteringAmountsFlow(group.alice, listOf(group.alice, group.bobby), pendingParticipantId = group.bobby)
+                            .copy(pendingIsAutoAdvance = false),
                     )
-                fixture.setFlow(pending)
 
-                fixture.reply(bobId, groupId, replyToMessageId = 3, text = "40")
+                    reply(group.alice, replyToMessageId = 3, text = "40")
 
-                fixture.currentFlow() shouldBe pending
-                fixture.telegramApi.sentMessages shouldBe emptyList()
+                    val flow = currentFlow() as? PendingSplit
+                    flow?.amountsEntered shouldBe mapOf(group.bobby to BigDecimal("40.00"))
+                    flow?.pendingParticipantId shouldBe null
+                    flow?.pendingPromptMessageId shouldBe null
+                    telegramApi.sentForceReplyPrompts shouldBe emptyList()
+                }
+            }
+
+            it("stops advancing and waits for Confirm once every participant has an amount") {
+                duringReply {
+                    val group = personas().alice().inGroup()
+                    setFlow(anEnteringAmountsFlow(group.alice, listOf(group.alice), pendingParticipantId = group.alice))
+
+                    reply(group.alice, replyToMessageId = 3, text = "90")
+
+                    val flow = currentFlow() as? PendingSplit
+                    flow?.amountsEntered shouldBe mapOf(group.alice to BigDecimal("90.00"))
+                    flow?.pendingParticipantId shouldBe null
+                    flow?.pendingPromptMessageId shouldBe null
+                    telegramApi.sentForceReplyPrompts shouldBe emptyList()
+
+                    telegramApi.deletedMessages.single() shouldBe (REPLY_CHAT_ID to 2L)
+                    flow?.actionsMessageId shouldBe 1L
+                }
             }
         }
 
-        "a reply to the wrong message is ignored" {
-            withTestDatabase { db ->
-                val fixture = ReplyFixture(db)
-                val (aliceId, groupId) = fixture.aliceOnly()
-                val pending =
-                    fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId), pendingParticipantId = aliceId)
-                fixture.setFlow(pending)
+        describe("validating the entered amount") {
+            it("an invalid amount reply doesn't touch state and asks again") {
+                duringReply {
+                    val group = personas().alice().known()
+                    val pending = anEnteringAmountsFlow(group.alice, listOf(group.alice), pendingParticipantId = group.alice)
+                    setFlow(pending)
 
-                fixture.reply(aliceId, groupId, replyToMessageId = 999, text = "40")
+                    replyIsRejectedAsInvalidAmount(group.alice, replyToMessageId = 3, text = "not a number", pending)
+                }
+            }
 
-                fixture.currentFlow() shouldBe pending
+            it("a reply with more than 2 decimal places doesn't touch state and asks again") {
+                duringReply {
+                    val group = personas().alice().known()
+                    val pending = anEnteringAmountsFlow(group.alice, listOf(group.alice), pendingParticipantId = group.alice)
+                    setFlow(pending)
+
+                    replyIsRejectedAsInvalidAmount(group.alice, replyToMessageId = 3, text = "33.333", pending)
+                }
+            }
+
+            it("a non-positive amount reply doesn't touch state and asks again") {
+                duringReply {
+                    val group = personas().alice().known()
+                    val pending = anEnteringAmountsFlow(group.alice, listOf(group.alice), pendingParticipantId = group.alice)
+                    setFlow(pending)
+
+                    replyIsRejectedAsInvalidAmount(group.alice, replyToMessageId = 3, text = "-5", pending)
+                }
             }
         }
 
-        "a named participant who isn't the invoker can answer their own auto-advanced prompt" {
-            withTestDatabase { db ->
-                val fixture = ReplyFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                val flow =
-                    PendingSplit(
-                        invokerId = aliceId,
-                        groupId = groupId,
-                        amount = BigDecimal("90.00"),
-                        currency = "USD",
-                        description = "dinner",
-                        participantIds = listOf(aliceId, bobId),
-                        promptMessageId = 1,
-                        stage = SplitFlowStage.ENTERING_AMOUNTS,
-                        actionsMessageId = 2,
-                        pendingParticipantId = bobId,
-                        pendingPromptMessageId = 3,
+        describe("who may answer") {
+            it("ignores a reply from someone other than the invoker") {
+                duringReply {
+                    val group = personas().alice().bobby().inGroup()
+                    val pending =
+                        anEnteringAmountsFlow(group.alice, listOf(group.alice, group.bobby), pendingParticipantId = group.alice)
+                    setFlow(pending)
+
+                    reply(group.bobby, replyToMessageId = 3, text = "40")
+
+                    currentFlow() shouldBe pending
+                    telegramApi.sentMessages shouldBe emptyList()
+                }
+            }
+
+            it("lets a named participant who isn't the invoker answer their own auto-advanced prompt") {
+                duringReply {
+                    val group = personas().alice().bobby().inGroup()
+                    setFlow(
+                        anEnteringAmountsFlow(group.alice, listOf(group.alice, group.bobby), pendingParticipantId = group.bobby),
                     )
-                fixture.setFlow(flow)
 
-                fixture.handler.handle(ReplyContext(REPLY_CHAT_ID, bobId, groupId, 3, "45.00"))
+                    reply(group.bobby, replyToMessageId = 3, text = "45.00")
 
-                (fixture.currentFlow() as PendingSplit).amountsEntered shouldBe mapOf(bobId to BigDecimal("45.00"))
+                    (currentFlow() as PendingSplit).amountsEntered shouldBe mapOf(group.bobby to BigDecimal("45.00"))
+                }
+            }
+
+            it("ignores a reply from someone who is neither the invoker nor the pending participant") {
+                duringReply {
+                    val cast = personas().alice().bobby().carol()
+                    val group = cast.inGroup()
+                    setFlow(
+                        anEnteringAmountsFlow(
+                            group.alice,
+                            listOf(group.alice, group.bobby, group.carol),
+                            pendingParticipantId = group.bobby,
+                        ),
+                    )
+
+                    reply(group.carol, replyToMessageId = 3, text = "45.00")
+
+                    (currentFlow() as PendingSplit).amountsEntered shouldBe emptyMap()
+                }
             }
         }
 
-        "a reply from someone who is neither the invoker nor the pending participant is ignored" {
-            withTestDatabase { db ->
-                val fixture = ReplyFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                val carolId = fixture.resolver.resolveMember("3", "carol", "Carol")
-                fixture.resolver.ensureGroupMembership(groupId, carolId)
-                val flow =
-                    PendingSplit(
-                        invokerId = aliceId,
-                        groupId = groupId,
-                        amount = BigDecimal("90.00"),
-                        currency = "USD",
-                        description = "dinner",
-                        participantIds = listOf(aliceId, bobId, carolId),
-                        promptMessageId = 1,
-                        stage = SplitFlowStage.ENTERING_AMOUNTS,
-                        actionsMessageId = 2,
-                        pendingParticipantId = bobId,
-                        pendingPromptMessageId = 3,
-                    )
-                fixture.setFlow(flow)
+        describe("targeting the right prompt") {
+            it("ignores a reply to the wrong message") {
+                duringReply {
+                    val group = personas().alice().known()
+                    val pending = anEnteringAmountsFlow(group.alice, listOf(group.alice), pendingParticipantId = group.alice)
+                    setFlow(pending)
 
-                fixture.handler.handle(ReplyContext(REPLY_CHAT_ID, carolId, groupId, 3, "45.00"))
+                    reply(group.alice, replyToMessageId = 999, text = "40")
 
-                (fixture.currentFlow() as PendingSplit).amountsEntered shouldBe emptyMap()
+                    currentFlow() shouldBe pending
+                }
             }
-        }
 
-        "a reply when no participant is pending is ignored" {
-            withTestDatabase { db ->
-                val fixture = ReplyFixture(db)
-                val (aliceId, groupId) = fixture.aliceOnly()
-                val pending =
-                    fixture.anEnteringAmountsFlow(
-                        aliceId,
-                        groupId,
-                        listOf(aliceId),
-                        pendingParticipantId = null,
-                        pendingPromptMessageId = null,
-                    )
-                fixture.setFlow(pending)
+            it("ignores a reply when no participant is pending") {
+                duringReply {
+                    val group = personas().alice().known()
+                    val pending =
+                        anEnteringAmountsFlow(
+                            group.alice,
+                            listOf(group.alice),
+                            pendingParticipantId = null,
+                            pendingPromptMessageId = null,
+                        )
+                    setFlow(pending)
 
-                fixture.reply(aliceId, groupId, replyToMessageId = 1, text = "40")
+                    reply(group.alice, replyToMessageId = 1, text = "40")
 
-                fixture.currentFlow() shouldBe pending
+                    currentFlow() shouldBe pending
+                }
             }
         }
     })

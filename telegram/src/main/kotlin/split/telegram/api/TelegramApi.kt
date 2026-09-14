@@ -49,4 +49,6 @@ interface TelegramApi {
     )
 
     suspend fun getChatAdministrators(chatId: Long): List<TgChatMember>
+
+    suspend fun setMyCommands(commands: List<BotCommand>)
 }

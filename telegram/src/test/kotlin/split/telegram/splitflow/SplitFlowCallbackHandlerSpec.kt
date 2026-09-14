@@ -1,57 +1,40 @@
 package split.telegram.splitflow
 
-import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import org.jetbrains.exposed.v1.jdbc.Database
 import split.core.GroupId
 import split.core.MemberId
 import split.storage.ExposedExpenseRepository
-import split.storage.ExposedGroupRepository
-import split.storage.ExposedMemberRepository
-import split.storage.ExposedPlatformDirectory
 import split.storage.ExposedSplitFlowStateRepository
 import split.telegram.CallbackContext
-import split.telegram.FakeTelegramApi
-import split.telegram.IdentityResolver
-import split.telegram.currentFlow
-import split.telegram.expenseCreatedWith
+import split.telegram.IdentityFixture
+import split.telegram.carol
+import split.telegram.chat
+import split.telegram.personas
 import split.telegram.withTestDatabase
 import java.math.BigDecimal
 
 private const val CALLBACK_CHAT_ID = -100L
 
+/** Every flow in this file starts life showing its mode-choice/amounts prompt on this message. */
+private const val FLOW_PROMPT_MESSAGE_ID = 1L
+
+/** The message a "pending list" entry lives on — SplitFlowCallbackHandler ignores it, so any id will do. */
+private const val PENDING_LIST_MESSAGE_ID = 999L
+
 private class CallbackFixture(
     db: Database,
-) {
-    val platformDirectory = ExposedPlatformDirectory(db)
-    val groupRepository = ExposedGroupRepository(db)
-    val memberRepository = ExposedMemberRepository(db)
+) : IdentityFixture(db) {
     val expenseRepository = ExposedExpenseRepository(db)
-    val resolver = IdentityResolver(platformDirectory, memberRepository, groupRepository)
-    val telegramApi = FakeTelegramApi()
     val splitStateStore = SplitStateStore(ExposedSplitFlowStateRepository(db))
     val handler =
         SplitFlowCallbackHandler(splitStateStore, memberRepository, expenseRepository, platformDirectory, telegramApi)
 }
 
-private suspend fun CallbackFixture.aliceAndBob(): Triple<MemberId, MemberId, GroupId> {
-    val aliceId = resolver.resolveMember("1", "alice", "Alice")
-    val bobId = resolver.resolveMember("2", "bob", "Bob")
-    val groupId = resolver.resolveGroup("-100")
-    return Triple(aliceId, bobId, groupId)
-}
-
-private suspend fun CallbackFixture.aliceAndBobInGroup(): Triple<MemberId, MemberId, GroupId> {
-    val (aliceId, bobId, groupId) = aliceAndBob()
-    resolver.ensureGroupMembership(groupId, aliceId)
-    resolver.ensureGroupMembership(groupId, bobId)
-    return Triple(aliceId, bobId, groupId)
-}
-
-private suspend fun CallbackFixture.aliceOnly(): Pair<MemberId, GroupId> {
-    val aliceId = resolver.resolveMember("1", "alice", "Alice")
-    val groupId = resolver.resolveGroup("-100")
-    return aliceId to groupId
+/** Runs [block] — a scenario where someone taps a button mid-split — against a fresh [CallbackFixture]. */
+private suspend fun duringSplitFlow(block: suspend CallbackFixture.() -> Unit) {
+    withTestDatabase { db -> CallbackFixture(db).block() }
 }
 
 private fun CallbackFixture.aChoosingModeFlow(
@@ -65,7 +48,7 @@ private fun CallbackFixture.aChoosingModeFlow(
     currency = "USD",
     description = "dinner",
     participantIds = participantIds,
-    promptMessageId = 1,
+    promptMessageId = FLOW_PROMPT_MESSAGE_ID,
     stage = SplitFlowStage.CHOOSING_MODE,
 )
 
@@ -80,7 +63,7 @@ private fun CallbackFixture.anEnteringAmountsFlow(
     currency = "USD",
     description = "dinner",
     participantIds = participantIds,
-    promptMessageId = 1,
+    promptMessageId = FLOW_PROMPT_MESSAGE_ID,
     stage = SplitFlowStage.ENTERING_AMOUNTS,
     actionsMessageId = 2,
 )
@@ -98,406 +81,391 @@ private suspend fun CallbackFixture.expenseCreatedWith(
     expense.shares.associate { it.memberId to it.shareAmount } shouldBe shares.toMap()
 }
 
+/** callbackQueryId is Telegram's opaque per-tap correlation id — irrelevant except where a test checks it's echoed back. */
 private suspend fun CallbackFixture.tapEqual(
     memberId: MemberId,
-    groupId: GroupId,
     messageId: Long,
     callbackQueryId: String = "cbq1",
-) = handler.handle(
-    CallbackContext(CALLBACK_CHAT_ID, memberId, groupId, callbackQueryId, messageId, SPLIT_MODE_EQUAL_DATA),
-)
+) {
+    telegramApi.userTapped(nameOf(memberId), messageId, SPLIT_MODE_EQUAL_DATA)
+    handler.handle(CallbackContext(CALLBACK_CHAT_ID, memberId, groupId, callbackQueryId, messageId, SPLIT_MODE_EQUAL_DATA))
+}
 
 private suspend fun CallbackFixture.tapExact(
     memberId: MemberId,
-    groupId: GroupId,
     messageId: Long,
     callbackQueryId: String = "cbq1",
-) = handler.handle(
-    CallbackContext(CALLBACK_CHAT_ID, memberId, groupId, callbackQueryId, messageId, SPLIT_MODE_EXACT_DATA),
-)
+) {
+    telegramApi.userTapped(nameOf(memberId), messageId, SPLIT_MODE_EXACT_DATA)
+    handler.handle(CallbackContext(CALLBACK_CHAT_ID, memberId, groupId, callbackQueryId, messageId, SPLIT_MODE_EXACT_DATA))
+}
 
+/** Taps the row for [participant] — the position on the keyboard is looked up, never hard-coded. */
 private suspend fun CallbackFixture.pick(
-    participantIndex: Int,
-    memberId: MemberId,
-    groupId: GroupId,
+    participant: MemberId,
+    tappedBy: MemberId,
     messageId: Long,
     callbackQueryId: String = "cbq1",
-) = handler.handle(
-    CallbackContext(CALLBACK_CHAT_ID, memberId, groupId, callbackQueryId, messageId, splitPickData(participantIndex)),
-)
+) {
+    val index = currentFlow()!!.participantIds.indexOf(participant)
+    val data = splitPickData(index)
+    telegramApi.userTapped(nameOf(tappedBy), messageId, data)
+    handler.handle(CallbackContext(CALLBACK_CHAT_ID, tappedBy, groupId, callbackQueryId, messageId, data))
+}
 
 private suspend fun CallbackFixture.tapConfirm(
     memberId: MemberId,
-    groupId: GroupId,
     messageId: Long,
     callbackQueryId: String = "cbq1",
-) = handler.handle(
-    CallbackContext(CALLBACK_CHAT_ID, memberId, groupId, callbackQueryId, messageId, SPLIT_CONFIRM_DATA),
-)
+) {
+    telegramApi.userTapped(nameOf(memberId), messageId, SPLIT_CONFIRM_DATA)
+    handler.handle(CallbackContext(CALLBACK_CHAT_ID, memberId, groupId, callbackQueryId, messageId, SPLIT_CONFIRM_DATA))
+}
+
+/** Taps a "pending list" entry to enter/correct [tappedBy]'s own amount on the flow prompted at [promptMessageId]. */
+private suspend fun CallbackFixture.enterFromPendingList(
+    tappedBy: MemberId,
+    promptMessageId: Long = FLOW_PROMPT_MESSAGE_ID,
+) {
+    val data = pendingSplitEnterData(promptMessageId)
+    telegramApi.userTapped(nameOf(tappedBy), PENDING_LIST_MESSAGE_ID, data)
+    handler.handle(CallbackContext(CALLBACK_CHAT_ID, tappedBy, groupId, "cbq", PENDING_LIST_MESSAGE_ID, data))
+}
 
 private suspend fun CallbackFixture.tapCancel(
     memberId: MemberId,
-    groupId: GroupId,
     messageId: Long,
     callbackQueryId: String = "cbq1",
-) = handler.handle(
-    CallbackContext(CALLBACK_CHAT_ID, memberId, groupId, callbackQueryId, messageId, SPLIT_CANCEL_DATA),
-)
+) {
+    telegramApi.userTapped(nameOf(memberId), messageId, SPLIT_CANCEL_DATA)
+    handler.handle(CallbackContext(CALLBACK_CHAT_ID, memberId, groupId, callbackQueryId, messageId, SPLIT_CANCEL_DATA))
+}
 
 class SplitFlowCallbackHandlerSpec :
-    StringSpec({
+    DescribeSpec({
 
-        "choosing Equal creates an equal-split expense and clears the flow" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                fixture.setFlow(fixture.aChoosingModeFlow(aliceId, groupId, listOf(aliceId, bobId)))
+        describe("a tap against a flow that can no longer be found") {
+            it("is answered but ignored when the chat has no pending flow") {
+                duringSplitFlow {
+                    val group = personas().alice().known()
 
-                fixture.tapEqual(aliceId, groupId, messageId = 1)
+                    tapEqual(group.alice, messageId = 1)
 
-                fixture.expenseCreatedWith(groupId, aliceId to BigDecimal("45.00"), bobId to BigDecimal("45.00"))
-                fixture.telegramApi.editedMessages.single().let { (chatId, messageId, _) ->
-                    chatId shouldBe -100L
-                    messageId shouldBe 1L
+                    chat() shouldBe
+                        """
+                        [alice] taps [split:mode:equal] on #1
+                        (alert to alice: "This split is no longer active.")
+                        """.trimIndent()
+                    expenseRepository.listActive(group.groupId) shouldBe emptyList()
                 }
-                fixture.currentFlow() shouldBe null
             }
-        }
 
-        "choosing Exact switches the table message and sends an actions message" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                fixture.setFlow(fixture.aChoosingModeFlow(aliceId, groupId, listOf(aliceId, bobId)))
-
-                fixture.tapExact(aliceId, groupId, messageId = 1)
-
-                fixture.expenseRepository.listActive(groupId) shouldBe emptyList()
-                fixture.telegramApi.editedRichMessages.single().let { (chatId, messageId, _) ->
-                    chatId shouldBe -100L
-                    messageId shouldBe 1L
-                }
-                fixture.telegramApi.sentMessages
-                    .single()
-                    .first shouldBe -100L
-
-                val flow = fixture.currentFlow()
-                flow?.stage shouldBe SplitFlowStage.ENTERING_AMOUNTS
-                flow?.actionsMessageId shouldBe 1L
-                flow?.amountsEntered shouldBe emptyMap()
-            }
-        }
-
-        "picking a participant records them as pending on the flow" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                fixture.setFlow(fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId)))
-
-                fixture.pick(participantIndex = 1, memberId = aliceId, groupId = groupId, messageId = 1)
-
-                val flow = fixture.currentFlow()
-                flow?.pendingParticipantId shouldBe bobId
-                flow?.pendingPromptMessageId shouldBe 1L
-                fixture.telegramApi.sentForceReplyPrompts.single() shouldBe
-                    (-100L to "How much is @bob's share? Reply to this message with an amount.")
-            }
-        }
-
-        "picking a different participant while holding your own pending slot deletes your stale prompt" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                fixture.setFlow(
-                    fixture
-                        .anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId))
-                        .copy(pendingParticipantId = aliceId, pendingPromptMessageId = 99),
-                )
-
-                fixture.pick(participantIndex = 1, memberId = aliceId, groupId = groupId, messageId = 1)
-
-                fixture.telegramApi.deletedMessages.single() shouldBe (CALLBACK_CHAT_ID to 99L)
-                fixture.telegramApi.sentMessages shouldBe emptyList()
-                fixture.currentFlow()?.pendingParticipantId shouldBe bobId
-            }
-        }
-
-        "claiming your own row while another participant is pending keeps their prompt and warns them" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                fixture.setFlow(
-                    fixture
-                        .anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId))
-                        .copy(pendingParticipantId = aliceId, pendingPromptMessageId = 99),
-                )
-
-                fixture.pick(participantIndex = 1, memberId = bobId, groupId = groupId, messageId = 1)
-
-                val displacedNotice =
-                    "@alice, someone else is entering their amount now — " +
-                        "tap \"Enter your amount\" again when you're ready."
-                fixture.telegramApi.deletedMessages shouldBe emptyList()
-                fixture.telegramApi.sentMessages shouldBe listOf(CALLBACK_CHAT_ID to displacedNotice)
-                fixture.currentFlow()?.pendingParticipantId shouldBe bobId
-                fixture.currentFlow()?.pendingPromptMessageId shouldBe 2L
-                fixture.telegramApi.sentForceReplyPrompts.single() shouldBe
-                    (CALLBACK_CHAT_ID to "How much is @bob's share? Reply to this message with an amount.")
-            }
-        }
-
-        "re-picking the participant who already holds the prompt deletes their stale prompt" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                fixture.setFlow(
-                    fixture
-                        .anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId))
-                        .copy(pendingParticipantId = aliceId, pendingPromptMessageId = 99),
-                )
-
-                fixture.pick(participantIndex = 0, memberId = aliceId, groupId = groupId, messageId = 1)
-
-                fixture.telegramApi.deletedMessages.single() shouldBe (CALLBACK_CHAT_ID to 99L)
-                fixture.telegramApi.sentMessages shouldBe emptyList()
-                fixture.currentFlow()?.pendingParticipantId shouldBe aliceId
-            }
-        }
-
-        "confirm creates the exact-split expense once amounts are entered" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                fixture.setFlow(
-                    fixture
-                        .anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId))
-                        .copy(amountsEntered = mapOf(aliceId to BigDecimal("50.00"), bobId to BigDecimal("40.00"))),
-                )
-
-                fixture.tapConfirm(aliceId, groupId, messageId = 2)
-
-                fixture.expenseCreatedWith(groupId, aliceId to BigDecimal("50.00"), bobId to BigDecimal("40.00"))
-                fixture.currentFlow() shouldBe null
-            }
-        }
-
-        "cancel clears the flow without creating an expense" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, groupId) = fixture.aliceOnly()
-                fixture.setFlow(fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId)))
-
-                fixture.tapCancel(aliceId, groupId, messageId = 2)
-
-                fixture.expenseRepository.listActive(groupId) shouldBe emptyList()
-                fixture.currentFlow() shouldBe null
-            }
-        }
-
-        "cancel deletes an outstanding, still-unanswered prompt" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, groupId) = fixture.aliceOnly()
-                fixture.setFlow(
-                    fixture
-                        .anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId))
-                        .copy(pendingParticipantId = aliceId, pendingPromptMessageId = 99),
-                )
-
-                fixture.tapCancel(aliceId, groupId, messageId = 2)
-
-                fixture.telegramApi.deletedMessages.single() shouldBe (-100L to 99L)
-            }
-        }
-
-        "a participant can pick their own row to answer out of turn, before auto-advance reaches them" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                val flow =
-                    fixture
-                        .anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId))
-                        .copy(pendingParticipantId = aliceId, pendingPromptMessageId = 3)
-                fixture.setFlow(flow)
-
-                fixture.handler.handle(CallbackContext(CALLBACK_CHAT_ID, bobId, groupId, "cbq", 1, splitPickData(1)))
-
-                val updated = fixture.currentFlow()!!
-                updated.pendingParticipantId shouldBe bobId
-                updated.pendingIsAutoAdvance shouldBe false
-            }
-        }
-
-        "a participant picking someone else's row is rejected" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                val flow =
-                    fixture
-                        .anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId))
-                        .copy(pendingParticipantId = aliceId, pendingPromptMessageId = 3)
-                fixture.setFlow(flow)
-
-                fixture.handler.handle(CallbackContext(CALLBACK_CHAT_ID, bobId, groupId, "cbq", 1, splitPickData(0)))
-
-                fixture.currentFlow()!!.pendingParticipantId shouldBe aliceId
-                fixture.telegramApi.answeredCallbacks
-                    .last()
-                    .second shouldBe
-                    "Only the person who started this split, or that participant, can do that."
-            }
-        }
-
-        "mode choice, cancel, and confirm still reject a non-invoker" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                fixture.setFlow(fixture.aChoosingModeFlow(aliceId, groupId, listOf(aliceId, bobId)))
-
-                fixture.handler.handle(
-                    CallbackContext(CALLBACK_CHAT_ID, bobId, groupId, "cbq", 1, SPLIT_MODE_EQUAL_DATA),
-                )
-
-                fixture.expenseRepository.listActive(groupId) shouldBe emptyList()
-                fixture.telegramApi.answeredCallbacks
-                    .last()
-                    .second shouldBe
-                    "Only the person who started this split can do that."
-            }
-        }
-
-        "a participant can pick their own row again after auto-advance has moved past them, to correct it" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                val flow =
-                    fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId)).copy(
-                        amountsEntered = mapOf(bobId to BigDecimal("40.00")),
-                        pendingParticipantId = null,
-                        pendingPromptMessageId = null,
+            it("is rejected when it targets a stale, superseded flow message") {
+                duringSplitFlow {
+                    val group = personas().alice().known()
+                    val stalePromptMessageId = 5L
+                    setFlow(
+                        aChoosingModeFlow(group.alice, group.groupId, listOf(group.alice))
+                            .copy(amount = BigDecimal("30.00"), description = "coffee", promptMessageId = stalePromptMessageId),
                     )
-                fixture.setFlow(flow)
 
-                fixture.handler.handle(CallbackContext(CALLBACK_CHAT_ID, bobId, groupId, "cbq", 1, splitPickData(1)))
+                    tapEqual(group.alice, messageId = 1)
 
-                val updated = fixture.currentFlow()!!
-                updated.pendingParticipantId shouldBe bobId
-                updated.amountsEntered shouldBe mapOf(bobId to BigDecimal("40.00"))
+                    chat() shouldBe
+                        """
+                        [alice] taps [split:mode:equal] on #1
+                        (alert to alice: "This split is no longer active.")
+                        """.trimIndent()
+                    expenseRepository.listActive(group.groupId) shouldBe emptyList()
+                    currentFlow()?.promptMessageId shouldBe stalePromptMessageId
+                }
             }
         }
 
-        "a callback from someone other than the invoker is rejected" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBob()
-                fixture.setFlow(fixture.aChoosingModeFlow(aliceId, groupId, listOf(aliceId, bobId)))
+        describe("choosing a split mode") {
+            it("creates an equal-split expense and clears the flow when Equal is chosen") {
+                duringSplitFlow {
+                    val group = personas().alice().bobby().inGroup()
+                    setFlow(aChoosingModeFlow(group.alice, group.groupId, listOf(group.alice, group.bobby)))
 
-                fixture.tapEqual(bobId, groupId, messageId = 1)
+                    tapEqual(group.alice, messageId = 1)
 
-                fixture.expenseRepository.listActive(groupId) shouldBe emptyList()
-                fixture.currentFlow()?.stage shouldBe SplitFlowStage.CHOOSING_MODE
-                fixture.telegramApi.answeredCallbacks
-                    .single()
-                    .third shouldBe true
+                    expenseCreatedWith(group.groupId, group.alice to BigDecimal("45.00"), group.bobby to BigDecimal("45.00"))
+                    telegramApi.editedMessages.single().let { (chatId, messageId, _) ->
+                        chatId shouldBe CALLBACK_CHAT_ID
+                        messageId shouldBe FLOW_PROMPT_MESSAGE_ID
+                    }
+                    currentFlow() shouldBe null
+                }
+            }
+
+            it("switches to entering amounts and sends an actions message when Exact is chosen") {
+                duringSplitFlow {
+                    val group = personas().alice().bobby().inGroup()
+                    setFlow(aChoosingModeFlow(group.alice, group.groupId, listOf(group.alice, group.bobby)))
+
+                    tapExact(group.alice, messageId = 1)
+
+                    expenseRepository.listActive(group.groupId) shouldBe emptyList()
+                    telegramApi.editedRichMessages.single().let { (chatId, messageId, _) ->
+                        chatId shouldBe CALLBACK_CHAT_ID
+                        messageId shouldBe FLOW_PROMPT_MESSAGE_ID
+                    }
+                    telegramApi.sentMessages.single().first shouldBe CALLBACK_CHAT_ID
+
+                    val flow = currentFlow()
+                    flow?.stage shouldBe SplitFlowStage.ENTERING_AMOUNTS
+                    flow?.actionsMessageId shouldBe 1L
+                    flow?.amountsEntered shouldBe emptyMap()
+                }
+            }
+
+            it("rejects a mode choice from anyone other than the person who started the split") {
+                duringSplitFlow {
+                    val group = personas().alice().bobby().known()
+                    setFlow(aChoosingModeFlow(group.alice, group.groupId, listOf(group.alice, group.bobby)))
+
+                    tapEqual(group.bobby, messageId = 1)
+
+                    expenseRepository.listActive(group.groupId) shouldBe emptyList()
+                    currentFlow()?.stage shouldBe SplitFlowStage.CHOOSING_MODE
+                    telegramApi.answeredCallbacks.single().let { (_, message, showAlert) ->
+                        message shouldBe "Only the person who started this split can do that."
+                        showAlert shouldBe true
+                    }
+                }
             }
         }
 
-        "a callback against a stale, superseded flow's message is rejected" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, groupId) = fixture.aliceOnly()
-                fixture.setFlow(
-                    fixture
-                        .aChoosingModeFlow(aliceId, groupId, listOf(aliceId))
-                        .copy(amount = BigDecimal("30.00"), description = "coffee", promptMessageId = 5),
-                )
+        describe("assigning who enters an amount next") {
+            it("records the picked participant as pending and prompts them") {
+                duringSplitFlow {
+                    val group = personas().alice().bobby().inGroup()
+                    setFlow(anEnteringAmountsFlow(group.alice, group.groupId, listOf(group.alice, group.bobby)))
 
-                fixture.tapEqual(aliceId, groupId, messageId = 1)
+                    pick(participant = group.bobby, tappedBy = group.alice, messageId = 1)
 
-                fixture.expenseRepository.listActive(groupId) shouldBe emptyList()
-                fixture.currentFlow()?.promptMessageId shouldBe 5
-                fixture.telegramApi.answeredCallbacks
-                    .single()
-                    .third shouldBe true
+                    val flow = currentFlow()
+                    flow?.pendingParticipantId shouldBe group.bobby
+                    flow?.pendingPromptMessageId shouldBe 1L
+                    telegramApi.sentForceReplyPrompts.single() shouldBe
+                        (-100L to "How much is @bobby's share? Reply to this message with an amount.")
+                }
+            }
+
+            it("deletes your own stale prompt when you pick a different participant while holding the pending slot") {
+                duringSplitFlow {
+                    val group = personas().alice().bobby().inGroup()
+                    setFlow(
+                        anEnteringAmountsFlow(group.alice, group.groupId, listOf(group.alice, group.bobby))
+                            .copy(pendingParticipantId = group.alice, pendingPromptMessageId = 99),
+                    )
+
+                    pick(participant = group.bobby, tappedBy = group.alice, messageId = 1)
+
+                    telegramApi.deletedMessages.single() shouldBe (CALLBACK_CHAT_ID to 99L)
+                    telegramApi.sentMessages shouldBe emptyList()
+                    currentFlow()?.pendingParticipantId shouldBe group.bobby
+                }
+            }
+
+            it("keeps another participant's prompt and warns them when you claim your own row instead") {
+                duringSplitFlow {
+                    val group = personas().alice().bobby().inGroup()
+                    setFlow(
+                        anEnteringAmountsFlow(group.alice, group.groupId, listOf(group.alice, group.bobby))
+                            .copy(pendingParticipantId = group.alice, pendingPromptMessageId = 99),
+                    )
+
+                    pick(participant = group.bobby, tappedBy = group.bobby, messageId = 1)
+
+                    val displacedNotice =
+                        "@alice, someone else is entering their amount now — " +
+                            "tap \"Enter your amount\" again when you're ready."
+                    telegramApi.deletedMessages shouldBe emptyList()
+                    telegramApi.sentMessages shouldBe listOf(CALLBACK_CHAT_ID to displacedNotice)
+                    currentFlow()?.pendingParticipantId shouldBe group.bobby
+                    currentFlow()?.pendingPromptMessageId shouldBe 2L
+                    telegramApi.sentForceReplyPrompts.single() shouldBe
+                        (CALLBACK_CHAT_ID to "How much is @bobby's share? Reply to this message with an amount.")
+                }
+            }
+
+            it("deletes the stale prompt when re-picking the participant who already holds it") {
+                duringSplitFlow {
+                    val group = personas().alice().bobby().inGroup()
+                    setFlow(
+                        anEnteringAmountsFlow(group.alice, group.groupId, listOf(group.alice, group.bobby))
+                            .copy(pendingParticipantId = group.alice, pendingPromptMessageId = 99),
+                    )
+
+                    pick(participant = group.alice, tappedBy = group.alice, messageId = 1)
+
+                    telegramApi.deletedMessages.single() shouldBe (CALLBACK_CHAT_ID to 99L)
+                    telegramApi.sentMessages shouldBe emptyList()
+                    currentFlow()?.pendingParticipantId shouldBe group.alice
+                }
+            }
+
+            it("lets a participant pick their own row out of turn, before auto-advance reaches them") {
+                duringSplitFlow {
+                    val group = personas().alice().bobby().inGroup()
+                    val flow =
+                        anEnteringAmountsFlow(group.alice, group.groupId, listOf(group.alice, group.bobby))
+                            .copy(pendingParticipantId = group.alice, pendingPromptMessageId = 3)
+                    setFlow(flow)
+
+                    pick(participant = group.bobby, tappedBy = group.bobby, messageId = 1)
+
+                    val updated = currentFlow()!!
+                    updated.pendingParticipantId shouldBe group.bobby
+                    updated.pendingIsAutoAdvance shouldBe false
+                }
+            }
+
+            it("lets a participant pick their own row again after auto-advance has moved past them, to correct it") {
+                duringSplitFlow {
+                    val group = personas().alice().bobby().inGroup()
+                    val flow =
+                        anEnteringAmountsFlow(group.alice, group.groupId, listOf(group.alice, group.bobby)).copy(
+                            amountsEntered = mapOf(group.bobby to BigDecimal("40.00")),
+                            pendingParticipantId = null,
+                            pendingPromptMessageId = null,
+                        )
+                    setFlow(flow)
+
+                    pick(participant = group.bobby, tappedBy = group.bobby, messageId = 1)
+
+                    val updated = currentFlow()!!
+                    updated.pendingParticipantId shouldBe group.bobby
+                    updated.amountsEntered shouldBe mapOf(group.bobby to BigDecimal("40.00"))
+                }
+            }
+
+            it("rejects a participant picking someone else's row") {
+                duringSplitFlow {
+                    val group = personas().alice().bobby().inGroup()
+                    val flow =
+                        anEnteringAmountsFlow(group.alice, group.groupId, listOf(group.alice, group.bobby))
+                            .copy(pendingParticipantId = group.alice, pendingPromptMessageId = 3)
+                    setFlow(flow)
+
+                    pick(participant = group.alice, tappedBy = group.bobby, messageId = 1)
+
+                    currentFlow()!!.pendingParticipantId shouldBe group.alice
+                    chat() shouldBe
+                        """
+                        [bobby] taps [split:pick:0] on #1
+                        (alert to bobby: "Only the person who started this split, or that participant, can do that.")
+                        """.trimIndent()
+                }
             }
         }
 
-        "a callback for a chat with no pending flow is answered but ignored" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, groupId) = fixture.aliceOnly()
+        describe("confirming or cancelling the split") {
+            it("creates the exact-split expense once amounts are entered and confirmed") {
+                duringSplitFlow {
+                    val group = personas().alice().bobby().inGroup()
+                    setFlow(
+                        anEnteringAmountsFlow(group.alice, group.groupId, listOf(group.alice, group.bobby))
+                            .copy(amountsEntered = mapOf(group.alice to BigDecimal("50.00"), group.bobby to BigDecimal("40.00"))),
+                    )
 
-                fixture.tapEqual(aliceId, groupId, messageId = 1)
+                    tapConfirm(group.alice, messageId = 2)
 
-                fixture.telegramApi.answeredCallbacks
-                    .single()
-                    .first shouldBe "cbq1"
-                fixture.expenseRepository.listActive(groupId) shouldBe emptyList()
+                    expenseCreatedWith(group.groupId, group.alice to BigDecimal("50.00"), group.bobby to BigDecimal("40.00"))
+                    currentFlow() shouldBe null
+                }
+            }
+
+            it("clears the flow without creating an expense when cancelled") {
+                duringSplitFlow {
+                    val group = personas().alice().known()
+                    setFlow(anEnteringAmountsFlow(group.alice, group.groupId, listOf(group.alice)))
+
+                    tapCancel(group.alice, messageId = 2)
+
+                    expenseRepository.listActive(group.groupId) shouldBe emptyList()
+                    currentFlow() shouldBe null
+                }
+            }
+
+            it("deletes an outstanding, still-unanswered prompt when cancelled") {
+                duringSplitFlow {
+                    val group = personas().alice().known()
+                    setFlow(
+                        anEnteringAmountsFlow(group.alice, group.groupId, listOf(group.alice))
+                            .copy(pendingParticipantId = group.alice, pendingPromptMessageId = 99),
+                    )
+
+                    tapCancel(group.alice, messageId = 2)
+
+                    telegramApi.deletedMessages.single() shouldBe (CALLBACK_CHAT_ID to 99L)
+                }
             }
         }
 
-        "entering from the pending list sends a fresh prompt to that participant" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                fixture.setFlow(fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId)))
+        describe("entering an amount from the pending list") {
+            it("sends a fresh prompt to the participant who taps their row") {
+                duringSplitFlow {
+                    val group = personas().alice().bobby().inGroup()
+                    setFlow(anEnteringAmountsFlow(group.alice, group.groupId, listOf(group.alice, group.bobby)))
 
-                fixture.handler.handle(
-                    CallbackContext(CALLBACK_CHAT_ID, bobId, groupId, "cbq", 999, pendingSplitEnterData(1)),
-                )
+                    enterFromPendingList(tappedBy = group.bobby)
 
-                val updated = fixture.currentFlow()!!
-                updated.pendingParticipantId shouldBe bobId
-                fixture.telegramApi.sentForceReplyPrompts.isNotEmpty() shouldBe true
+                    val updated = currentFlow()!!
+                    updated.pendingParticipantId shouldBe group.bobby
+                    telegramApi.sentForceReplyPrompts.single() shouldBe
+                        (CALLBACK_CHAT_ID to "How much is @bobby's share? Reply to this message with an amount.")
+                }
             }
-        }
 
-        "entering from the pending list to correct an already-submitted amount" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                fixture.setFlow(
-                    fixture
-                        .anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId))
-                        .copy(amountsEntered = mapOf(bobId to BigDecimal("40.00"))),
-                )
+            it("lets a participant correct an amount they already submitted") {
+                duringSplitFlow {
+                    val group = personas().alice().bobby().inGroup()
+                    setFlow(
+                        anEnteringAmountsFlow(group.alice, group.groupId, listOf(group.alice, group.bobby))
+                            .copy(amountsEntered = mapOf(group.bobby to BigDecimal("40.00"))),
+                    )
 
-                fixture.handler.handle(
-                    CallbackContext(CALLBACK_CHAT_ID, bobId, groupId, "cbq", 999, pendingSplitEnterData(1)),
-                )
+                    enterFromPendingList(tappedBy = group.bobby)
 
-                val updated = fixture.currentFlow()!!
-                updated.pendingParticipantId shouldBe bobId
-                updated.amountsEntered shouldBe mapOf(bobId to BigDecimal("40.00"))
+                    val updated = currentFlow()!!
+                    updated.pendingParticipantId shouldBe group.bobby
+                    updated.amountsEntered shouldBe mapOf(group.bobby to BigDecimal("40.00"))
+                }
             }
-        }
 
-        "entering from the pending list for a non-participant is rejected" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                val carolId = fixture.resolver.resolveMember("3", "carol", "Carol")
-                fixture.setFlow(fixture.anEnteringAmountsFlow(aliceId, groupId, listOf(aliceId, bobId)))
+            it("rejects a tap from someone who isn't a participant in the split") {
+                duringSplitFlow {
+                    val group = personas().alice().bobby().inGroup()
+                    val carolId = carol()
+                    setFlow(anEnteringAmountsFlow(group.alice, group.groupId, listOf(group.alice, group.bobby)))
 
-                fixture.handler.handle(
-                    CallbackContext(CALLBACK_CHAT_ID, carolId, groupId, "cbq", 999, pendingSplitEnterData(1)),
-                )
+                    enterFromPendingList(tappedBy = carolId)
 
-                fixture.currentFlow()!!.pendingParticipantId shouldBe null
+                    currentFlow()!!.pendingParticipantId shouldBe null
+                    chat() shouldBe
+                        """
+                        [carol] taps [pending:enter:1] on #999
+                        (alert to carol: "You're not part of this split.")
+                        """.trimIndent()
+                }
             }
-        }
 
-        "entering from the pending list for a flow already closed by someone else shows it's no longer active" {
-            withTestDatabase { db ->
-                val fixture = CallbackFixture(db)
-                val (aliceId, bobId, groupId) = fixture.aliceAndBobInGroup()
-                // No flow set for prompt message id 1 — it was already confirmed/cancelled.
+            it("shows the split is no longer active when it was already closed by someone else") {
+                duringSplitFlow {
+                    val group = personas().alice().bobby().inGroup()
+                    // No flow set for prompt message id 1 — it was already confirmed/cancelled.
 
-                fixture.handler.handle(
-                    CallbackContext(CALLBACK_CHAT_ID, bobId, groupId, "cbq", 999, pendingSplitEnterData(1)),
-                )
+                    enterFromPendingList(tappedBy = group.bobby)
 
-                fixture.telegramApi.answeredCallbacks.last() shouldBe Triple("cbq", "This split is no longer active.", true)
+                    chat() shouldBe
+                        """
+                        [bobby] taps [pending:enter:1] on #999
+                        (alert to bobby: "This split is no longer active.")
+                        """.trimIndent()
+                }
             }
         }
     })

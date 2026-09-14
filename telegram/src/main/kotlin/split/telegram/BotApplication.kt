@@ -9,11 +9,15 @@ import split.storage.ExposedSplitFlowStateRepository
 import split.storage.connectDatabaseFromEnv
 import split.telegram.api.HttpTelegramApi
 import split.telegram.api.TelegramApi
+import split.telegram.commands.BOT_COMMANDS
 import split.telegram.commands.BalanceCommand
 import split.telegram.commands.BalancesCommand
 import split.telegram.commands.CurrencyCommand
 import split.telegram.commands.DeleteExpenseCommand
+import split.telegram.commands.DmFallbackCommand
+import split.telegram.commands.DmStartCommand
 import split.telegram.commands.ExpensesCommand
+import split.telegram.commands.HELP_CALLBACK_DATA
 import split.telegram.commands.HelpCommand
 import split.telegram.commands.HistoryCommand
 import split.telegram.commands.MembersCommand
@@ -60,6 +64,9 @@ suspend fun main() {
     val botToken =
         System.getenv("TELEGRAM_BOT_TOKEN")
             ?: error("TELEGRAM_BOT_TOKEN environment variable is required")
+    val botUsername =
+        System.getenv("TELEGRAM_BOT_USERNAME")
+            ?: error("TELEGRAM_BOT_USERNAME environment variable is required")
 
     val db = connectDatabaseFromEnv()
     val memberRepository = ExposedMemberRepository(db)
@@ -82,11 +89,15 @@ suspend fun main() {
         )
     val splitFlowReplyHandler = SplitFlowReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi)
     val splitDraftReplyHandler = SplitDraftReplyHandler(splitStateStore, memberRepository, platformDirectory, telegramApi, flowStarter)
+    val startCommand = StartCommand(groupRepository, telegramApi)
+    val helpCommand = HelpCommand(telegramApi)
+    val dmStartCommand = DmStartCommand(botUsername, telegramApi)
+    val dmFallbackCommand = DmFallbackCommand(botUsername, telegramApi)
 
     val handlers =
         mapOf(
-            "start" to StartCommand(groupRepository, telegramApi)::handle,
-            "help" to HelpCommand(telegramApi)::handle,
+            "start" to startCommand::handle,
+            "help" to helpCommand::handle,
             "currency" to CurrencyCommand(groupRepository, telegramApi)::handle,
             "members" to MembersCommand(memberRepository, platformDirectory, telegramApi)::handle,
             "split" to SplitExpenseCommand(
@@ -153,19 +164,34 @@ suspend fun main() {
         CommandRouter(
             identityResolver,
             handlers,
-            callbackHandler = splitFlowCallbackHandler::handle,
-            replyHandler = { context ->
-                when (splitStateStore.find(context.chatId, context.replyToMessageId)) {
-                    is PendingSplitDraft -> splitDraftReplyHandler.handle(context)
-                    is PendingSplit -> splitFlowReplyHandler.handle(context)
-                    null -> {}
-                }
-            },
-            isTrackedReply = { chatId, messageId ->
-                splitStateStore.find(chatId, messageId) != null
-            },
+            callbacks =
+                CallbackRouting(
+                    flowHandler = splitFlowCallbackHandler::handle,
+                    staticHandlers = mapOf(HELP_CALLBACK_DATA to helpCommand::handleCallback),
+                ),
+            reply =
+                ReplyRouting(
+                    handler = { context ->
+                        when (splitStateStore.find(context.chatId, context.replyToMessageId)) {
+                            is PendingSplitDraft -> splitDraftReplyHandler.handle(context)
+                            is PendingSplit -> splitFlowReplyHandler.handle(context)
+                            null -> {}
+                        }
+                    },
+                    isTracked = { chatId, messageId ->
+                        splitStateStore.find(chatId, messageId) != null
+                    },
+                ),
+            dm =
+                DmRouting(
+                    handlers = mapOf("start" to dmStartCommand::handle, "help" to dmStartCommand::handle),
+                    fallbackHandler = dmFallbackCommand::handle,
+                ),
+            groupJoinHandler = startCommand::welcomeNewGroup,
         )
     val pollLoop = PollLoop(telegramApi, router)
+
+    telegramApi.setMyCommands(BOT_COMMANDS)
 
     println("Bot started, polling for updates...")
     while (true) {

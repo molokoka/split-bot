@@ -11,14 +11,29 @@ import java.time.Clock
 import java.time.Instant
 import java.util.UUID
 
+interface IdentityResolving {
+    suspend fun resolveMember(
+        externalUserId: String,
+        username: String?,
+        displayName: String,
+    ): MemberId
+
+    suspend fun resolveGroup(externalChatId: String): GroupId
+
+    suspend fun ensureGroupMembership(
+        groupId: GroupId,
+        memberId: MemberId,
+    )
+}
+
 class IdentityResolver(
     private val platformDirectory: PlatformDirectory,
     private val memberRepository: MemberRepository,
     private val groupRepository: GroupRepository,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
     private val clock: Clock = Clock.systemUTC(),
-) {
-    suspend fun resolveMember(
+) : IdentityResolving {
+    override suspend fun resolveMember(
         externalUserId: String,
         username: String?,
         displayName: String,
@@ -39,7 +54,7 @@ class IdentityResolver(
         return memberId
     }
 
-    suspend fun resolveGroup(externalChatId: String): GroupId {
+    override suspend fun resolveGroup(externalChatId: String): GroupId {
         val existing = platformDirectory.findGroup(PLATFORM, externalChatId)
         if (existing != null) return existing
 
@@ -49,7 +64,7 @@ class IdentityResolver(
         return newId
     }
 
-    suspend fun ensureGroupMembership(
+    override suspend fun ensureGroupMembership(
         groupId: GroupId,
         memberId: MemberId,
     ) {
