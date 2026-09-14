@@ -204,13 +204,14 @@ fun formatAllBalances(
     usernames: Map<MemberId, String> = emptyMap(),
 ): String {
     val nameOf = members.associateBy { it.id }
-    val lines = paymentsByCurrency.toSortedMap().flatMap { (currency, payments) ->
-        payments.map { payment ->
-            val from = mentionName(nameOf.getValue(payment.from), usernames)
-            val to = mentionName(nameOf.getValue(payment.to), usernames)
-            "$from owes $to ${formatAmount(payment.amount, currency)}"
+    val lines =
+        paymentsByCurrency.toSortedMap().flatMap { (currency, payments) ->
+            payments.map { payment ->
+                val from = mentionName(nameOf.getValue(payment.from), usernames)
+                val to = mentionName(nameOf.getValue(payment.to), usernames)
+                "$from owes $to ${formatAmount(payment.amount, currency)}"
+            }
         }
-    }
     if (lines.isEmpty()) return "Everyone's settled up!"
 
     return "Balances:\n\n" + lines.joinToString("\n")

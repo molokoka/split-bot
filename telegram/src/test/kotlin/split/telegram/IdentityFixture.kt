@@ -23,9 +23,14 @@ internal open class IdentityFixture(
 
     private var resolvedGroupId: GroupId? = null
 
-    /** The group the current scenario is about — set once a [Personas] chain resolves it, so call sites never repeat it. */
+    /**
+     * The group the current scenario is about — set once a [Personas] chain resolves it, so call sites never
+     * repeat it.
+     */
     var groupId: GroupId
-        get() = resolvedGroupId ?: error("No group resolved yet — start the scenario with e.g. personas().alice().inGroup().")
+        get() =
+            resolvedGroupId
+                ?: error("No group resolved yet — start the scenario with e.g. personas().alice().inGroup().")
         internal set(value) {
             resolvedGroupId = value
         }

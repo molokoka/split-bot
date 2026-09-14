@@ -111,8 +111,9 @@ class StartCommand(
         welcome(context.chatId, context.groupId, TYPED_START_RULE)
     }
 
-    suspend fun welcomeNewGroup(context: GroupJoinContext) =
+    suspend fun welcomeNewGroup(context: GroupJoinContext) {
         welcome(context.chatId, context.groupId, GROUP_JOIN_START_RULE)
+    }
 
     private suspend fun welcome(
         chatId: Long,

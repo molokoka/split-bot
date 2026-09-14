@@ -43,7 +43,11 @@ class CommandRouterSpec :
                 it("triggers a recognized command's action, forwarding the remaining text as arguments") {
                     duringRouting {
                         val addInvocations = mutableListOf<CommandContext>()
-                        val router = CommandRouter(this, mapOf("add" to { context: CommandContext -> addInvocations += context }))
+                        val router =
+                            CommandRouter(
+                                this,
+                                mapOf("add" to { context: CommandContext -> addInvocations += context }),
+                            )
 
                         router.handleUpdate(anUpdate("/add 90 dinner"))
 
@@ -56,7 +60,11 @@ class CommandRouterSpec :
                 it("resolves the sender's identity and records them as a member of the group") {
                     duringRouting {
                         val helpInvocations = mutableListOf<CommandContext>()
-                        val router = CommandRouter(this, mapOf("help" to { context: CommandContext -> helpInvocations += context }))
+                        val router =
+                            CommandRouter(
+                                this,
+                                mapOf("help" to { context: CommandContext -> helpInvocations += context }),
+                            )
 
                         router.handleUpdate(anUpdate("/help"))
 
@@ -72,7 +80,11 @@ class CommandRouterSpec :
                 it("does not trigger a different command's action") {
                     duringRouting {
                         val helpInvocations = mutableListOf<CommandContext>()
-                        val router = CommandRouter(this, mapOf("help" to { context: CommandContext -> helpInvocations += context }))
+                        val router =
+                            CommandRouter(
+                                this,
+                                mapOf("help" to { context: CommandContext -> helpInvocations += context }),
+                            )
 
                         router.handleUpdate(anUpdate("/start"))
 
@@ -93,7 +105,11 @@ class CommandRouterSpec :
                 it("plain, non-command chat, creating no identity") {
                     duringRouting {
                         val helpInvocations = mutableListOf<CommandContext>()
-                        val router = CommandRouter(this, mapOf("help" to { context: CommandContext -> helpInvocations += context }))
+                        val router =
+                            CommandRouter(
+                                this,
+                                mapOf("help" to { context: CommandContext -> helpInvocations += context }),
+                            )
 
                         router.handleUpdate(anUpdate("just chatting"))
 
@@ -105,7 +121,11 @@ class CommandRouterSpec :
                 it("updates that carry no message or no sender") {
                     duringRouting {
                         val helpInvocations = mutableListOf<CommandContext>()
-                        val router = CommandRouter(this, mapOf("help" to { context: CommandContext -> helpInvocations += context }))
+                        val router =
+                            CommandRouter(
+                                this,
+                                mapOf("help" to { context: CommandContext -> helpInvocations += context }),
+                            )
 
                         router.handleUpdate(TgUpdate(updateId = 1, message = null))
 
@@ -261,7 +281,11 @@ class CommandRouterSpec :
                                     TgCallbackQuery(
                                         id = "cbq1",
                                         from = TgUser(id = ALICE_TG_ID, firstName = "Alice"),
-                                        message = TgMessage(messageId = 42, chat = TgChat(id = GROUP_CHAT_ID, type = "group")),
+                                        message =
+                                            TgMessage(
+                                                messageId = 42,
+                                                chat = TgChat(id = GROUP_CHAT_ID, type = "group"),
+                                            ),
                                         data = "split:mode:equal",
                                     ),
                             ),
@@ -298,7 +322,11 @@ class CommandRouterSpec :
                                     TgCallbackQuery(
                                         id = "cbq1",
                                         from = TgUser(id = ALICE_TG_ID, firstName = "Alice"),
-                                        message = TgMessage(messageId = 42, chat = TgChat(id = GROUP_CHAT_ID, type = "group")),
+                                        message =
+                                            TgMessage(
+                                                messageId = 42,
+                                                chat = TgChat(id = GROUP_CHAT_ID, type = "group"),
+                                            ),
                                         data = "help",
                                     ),
                             ),
@@ -324,7 +352,11 @@ class CommandRouterSpec :
                                     TgCallbackQuery(
                                         id = "cbq1",
                                         from = TgUser(id = ALICE_TG_ID, firstName = "Alice"),
-                                        message = TgMessage(messageId = 42, chat = TgChat(id = GROUP_CHAT_ID, type = "group")),
+                                        message =
+                                            TgMessage(
+                                                messageId = 42,
+                                                chat = TgChat(id = GROUP_CHAT_ID, type = "group"),
+                                            ),
                                         data = "split:mode:equal",
                                     ),
                             ),
@@ -364,7 +396,11 @@ class CommandRouterSpec :
                                     TgCallbackQuery(
                                         id = "cbq2",
                                         from = TgUser(id = ALICE_TG_ID, firstName = "Alice"),
-                                        message = TgMessage(messageId = 42, chat = TgChat(id = GROUP_CHAT_ID, type = "group")),
+                                        message =
+                                            TgMessage(
+                                                messageId = 42,
+                                                chat = TgChat(id = GROUP_CHAT_ID, type = "group"),
+                                            ),
                                         data = null,
                                     ),
                             ),

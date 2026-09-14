@@ -81,14 +81,19 @@ private suspend fun CallbackFixture.expenseCreatedWith(
     expense.shares.associate { it.memberId to it.shareAmount } shouldBe shares.toMap()
 }
 
-/** callbackQueryId is Telegram's opaque per-tap correlation id — irrelevant except where a test checks it's echoed back. */
+/**
+ * callbackQueryId is Telegram's opaque per-tap correlation id — irrelevant except where a test checks
+ * it's echoed back.
+ */
 private suspend fun CallbackFixture.tapEqual(
     memberId: MemberId,
     messageId: Long,
     callbackQueryId: String = "cbq1",
 ) {
     telegramApi.userTapped(nameOf(memberId), messageId, SPLIT_MODE_EQUAL_DATA)
-    handler.handle(CallbackContext(CALLBACK_CHAT_ID, memberId, groupId, callbackQueryId, messageId, SPLIT_MODE_EQUAL_DATA))
+    handler.handle(
+        CallbackContext(CALLBACK_CHAT_ID, memberId, groupId, callbackQueryId, messageId, SPLIT_MODE_EQUAL_DATA),
+    )
 }
 
 private suspend fun CallbackFixture.tapExact(
@@ -97,7 +102,9 @@ private suspend fun CallbackFixture.tapExact(
     callbackQueryId: String = "cbq1",
 ) {
     telegramApi.userTapped(nameOf(memberId), messageId, SPLIT_MODE_EXACT_DATA)
-    handler.handle(CallbackContext(CALLBACK_CHAT_ID, memberId, groupId, callbackQueryId, messageId, SPLIT_MODE_EXACT_DATA))
+    handler.handle(
+        CallbackContext(CALLBACK_CHAT_ID, memberId, groupId, callbackQueryId, messageId, SPLIT_MODE_EXACT_DATA),
+    )
 }
 
 /** Taps the row for [participant] — the position on the keyboard is looked up, never hard-coded. */
@@ -166,7 +173,11 @@ class SplitFlowCallbackHandlerSpec :
                     val stalePromptMessageId = 5L
                     setFlow(
                         aChoosingModeFlow(group.alice, group.groupId, listOf(group.alice))
-                            .copy(amount = BigDecimal("30.00"), description = "coffee", promptMessageId = stalePromptMessageId),
+                            .copy(
+                                amount = BigDecimal("30.00"),
+                                description = "coffee",
+                                promptMessageId = stalePromptMessageId,
+                            ),
                     )
 
                     tapEqual(group.alice, messageId = 1)
@@ -190,7 +201,11 @@ class SplitFlowCallbackHandlerSpec :
 
                     tapEqual(group.alice, messageId = 1)
 
-                    expenseCreatedWith(group.groupId, group.alice to BigDecimal("45.00"), group.bobby to BigDecimal("45.00"))
+                    expenseCreatedWith(
+                        group.groupId,
+                        group.alice to BigDecimal("45.00"),
+                        group.bobby to BigDecimal("45.00"),
+                    )
                     telegramApi.editedMessages.single().let { (chatId, messageId, _) ->
                         chatId shouldBe CALLBACK_CHAT_ID
                         messageId shouldBe FLOW_PROMPT_MESSAGE_ID
@@ -368,12 +383,19 @@ class SplitFlowCallbackHandlerSpec :
                     val group = personas().alice().bobby().inGroup()
                     setFlow(
                         anEnteringAmountsFlow(group.alice, group.groupId, listOf(group.alice, group.bobby))
-                            .copy(amountsEntered = mapOf(group.alice to BigDecimal("50.00"), group.bobby to BigDecimal("40.00"))),
+                            .copy(
+                                amountsEntered =
+                                    mapOf(group.alice to BigDecimal("50.00"), group.bobby to BigDecimal("40.00")),
+                            ),
                     )
 
                     tapConfirm(group.alice, messageId = 2)
 
-                    expenseCreatedWith(group.groupId, group.alice to BigDecimal("50.00"), group.bobby to BigDecimal("40.00"))
+                    expenseCreatedWith(
+                        group.groupId,
+                        group.alice to BigDecimal("50.00"),
+                        group.bobby to BigDecimal("40.00"),
+                    )
                     currentFlow() shouldBe null
                 }
             }

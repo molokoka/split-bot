@@ -164,7 +164,8 @@ class SplitDraftReplyHandlerSpec :
 
                     expenseRepository.listActive(group.groupId) shouldBe emptyList()
                     telegramApi.sentMessages.last().let { (_, text) ->
-                        text shouldBe "I don't recognize <code>@stranger</code> yet — ask them to run /start with me first."
+                        text shouldBe
+                            "I don't recognize <code>@stranger</code> yet — ask them to run /start with me first."
                     }
                 }
             }

@@ -77,7 +77,11 @@ class SplitFlowReplyHandlerSpec :
                 duringReply {
                     val group = personas().alice().bobby().inGroup()
                     setFlow(
-                        anEnteringAmountsFlow(group.alice, listOf(group.alice, group.bobby), pendingParticipantId = group.bobby),
+                        anEnteringAmountsFlow(
+                            group.alice,
+                            listOf(group.alice, group.bobby),
+                            pendingParticipantId = group.bobby,
+                        ),
                     )
 
                     reply(group.alice, replyToMessageId = 3, text = "40")
@@ -104,8 +108,11 @@ class SplitFlowReplyHandlerSpec :
                 duringReply {
                     val group = personas().alice().bobby().inGroup()
                     setFlow(
-                        anEnteringAmountsFlow(group.alice, listOf(group.alice, group.bobby), pendingParticipantId = group.bobby)
-                            .copy(pendingIsAutoAdvance = false),
+                        anEnteringAmountsFlow(
+                            group.alice,
+                            listOf(group.alice, group.bobby),
+                            pendingParticipantId = group.bobby,
+                        ).copy(pendingIsAutoAdvance = false),
                     )
 
                     reply(group.alice, replyToMessageId = 3, text = "40")
@@ -141,7 +148,8 @@ class SplitFlowReplyHandlerSpec :
             it("an invalid amount reply doesn't touch state and asks again") {
                 duringReply {
                     val group = personas().alice().known()
-                    val pending = anEnteringAmountsFlow(group.alice, listOf(group.alice), pendingParticipantId = group.alice)
+                    val pending =
+                        anEnteringAmountsFlow(group.alice, listOf(group.alice), pendingParticipantId = group.alice)
                     setFlow(pending)
 
                     replyIsRejectedAsInvalidAmount(group.alice, replyToMessageId = 3, text = "not a number", pending)
@@ -151,7 +159,8 @@ class SplitFlowReplyHandlerSpec :
             it("a reply with more than 2 decimal places doesn't touch state and asks again") {
                 duringReply {
                     val group = personas().alice().known()
-                    val pending = anEnteringAmountsFlow(group.alice, listOf(group.alice), pendingParticipantId = group.alice)
+                    val pending =
+                        anEnteringAmountsFlow(group.alice, listOf(group.alice), pendingParticipantId = group.alice)
                     setFlow(pending)
 
                     replyIsRejectedAsInvalidAmount(group.alice, replyToMessageId = 3, text = "33.333", pending)
@@ -161,7 +170,8 @@ class SplitFlowReplyHandlerSpec :
             it("a non-positive amount reply doesn't touch state and asks again") {
                 duringReply {
                     val group = personas().alice().known()
-                    val pending = anEnteringAmountsFlow(group.alice, listOf(group.alice), pendingParticipantId = group.alice)
+                    val pending =
+                        anEnteringAmountsFlow(group.alice, listOf(group.alice), pendingParticipantId = group.alice)
                     setFlow(pending)
 
                     replyIsRejectedAsInvalidAmount(group.alice, replyToMessageId = 3, text = "-5", pending)
@@ -174,7 +184,11 @@ class SplitFlowReplyHandlerSpec :
                 duringReply {
                     val group = personas().alice().bobby().inGroup()
                     val pending =
-                        anEnteringAmountsFlow(group.alice, listOf(group.alice, group.bobby), pendingParticipantId = group.alice)
+                        anEnteringAmountsFlow(
+                            group.alice,
+                            listOf(group.alice, group.bobby),
+                            pendingParticipantId = group.alice,
+                        )
                     setFlow(pending)
 
                     reply(group.bobby, replyToMessageId = 3, text = "40")
@@ -188,7 +202,11 @@ class SplitFlowReplyHandlerSpec :
                 duringReply {
                     val group = personas().alice().bobby().inGroup()
                     setFlow(
-                        anEnteringAmountsFlow(group.alice, listOf(group.alice, group.bobby), pendingParticipantId = group.bobby),
+                        anEnteringAmountsFlow(
+                            group.alice,
+                            listOf(group.alice, group.bobby),
+                            pendingParticipantId = group.bobby,
+                        ),
                     )
 
                     reply(group.bobby, replyToMessageId = 3, text = "45.00")
@@ -220,7 +238,8 @@ class SplitFlowReplyHandlerSpec :
             it("ignores a reply to the wrong message") {
                 duringReply {
                     val group = personas().alice().known()
-                    val pending = anEnteringAmountsFlow(group.alice, listOf(group.alice), pendingParticipantId = group.alice)
+                    val pending =
+                        anEnteringAmountsFlow(group.alice, listOf(group.alice), pendingParticipantId = group.alice)
                     setFlow(pending)
 
                     reply(group.alice, replyToMessageId = 999, text = "40")
