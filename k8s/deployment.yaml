@@ -26,6 +26,8 @@ spec:
                 secretKeyRef:
                   name: split-telegram
                   key: TELEGRAM_BOT_TOKEN
+            - name: TELEGRAM_BOT_USERNAME
+              value: EvenSplitBot
           volumeMounts:
             - name: db
               mountPath: /data
